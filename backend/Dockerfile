@@ -11,17 +11,14 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-# Copy composer.json only (NOT composer.lock)
-COPY composer.json ./
-
-# Install dependencies fresh (creates new lock file compatible with PHP 8.3)
-RUN composer update --no-dev --optimize-autoloader --no-interaction
-
-# Copy rest of the application
+# Copy ALL application files first
 COPY . .
 
-# Remove old composer.lock if it exists and regenerate autoloader
-RUN rm -f composer.lock && composer dump-autoload --optimize
+# Remove any existing composer.lock to avoid version conflicts
+RUN rm -f composer.lock
+
+# Install dependencies (generates fresh lock file for PHP 8.3)
+RUN composer update --no-dev --optimize-autoloader --no-interaction
 
 # Set permissions
 RUN chmod -R 775 storage bootstrap/cache 2>/dev/null || true
