@@ -30,6 +30,10 @@ RUN composer run-script post-autoload-dump || true
 RUN chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 RUN mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/logs
 
+# Make entrypoint executable
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 8080
 
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+CMD ["/docker-entrypoint.sh"]
