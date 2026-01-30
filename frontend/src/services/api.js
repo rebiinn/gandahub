@@ -1,0 +1,179 @@
+import axios from 'axios';
+
+// Create axios instance with default config
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
+});
+
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor to handle errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear token and redirect to login if unauthorized
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth API
+export const authAPI = {
+  register: (data) => api.post('/register', data),
+  login: (data) => api.post('/login', data),
+  logout: () => api.post('/logout'),
+  me: () => api.get('/me'),
+  refresh: () => api.post('/refresh'),
+  updateProfile: (data) => api.put('/profile', data),
+  changePassword: (data) => api.put('/change-password', data),
+};
+
+// Products API
+export const productsAPI = {
+  getAll: (params) => api.get('/products', { params }),
+  getOne: (id) => api.get(`/products/${id}`),
+  getBySlug: (slug) => api.get(`/products/slug/${slug}`),
+  getFeatured: () => api.get('/products/featured'),
+  getOnSale: () => api.get('/products/on-sale'),
+  getNewArrivals: () => api.get('/products/new-arrivals'),
+  getBrands: () => api.get('/products/brands'),
+  // Admin
+  create: (data) => api.post('/admin/products', data),
+  update: (id, data) => api.put(`/admin/products/${id}`, data),
+  delete: (id) => api.delete(`/admin/products/${id}`),
+  updateStock: (id, data) => api.put(`/admin/products/${id}/stock`, data),
+};
+
+// Categories API
+export const categoriesAPI = {
+  getAll: (params) => api.get('/categories', { params }),
+  getOne: (id) => api.get(`/categories/${id}`),
+  // Admin
+  create: (data) => api.post('/admin/categories', data),
+  update: (id, data) => api.put(`/admin/categories/${id}`, data),
+  delete: (id) => api.delete(`/admin/categories/${id}`),
+};
+
+// Cart API
+export const cartAPI = {
+  get: () => api.get('/cart'),
+  addItem: (data) => api.post('/cart/items', data),
+  updateItem: (itemId, data) => api.put(`/cart/items/${itemId}`, data),
+  removeItem: (itemId) => api.delete(`/cart/items/${itemId}`),
+  clear: () => api.delete('/cart'),
+  applyCoupon: (code) => api.post('/cart/coupon', { coupon_code: code }),
+  removeCoupon: () => api.delete('/cart/coupon'),
+};
+
+// Orders API
+export const ordersAPI = {
+  getAll: (params) => api.get('/orders', { params }),
+  getOne: (id) => api.get(`/orders/${id}`),
+  create: (data) => api.post('/orders', data),
+  cancel: (id) => api.post(`/orders/${id}/cancel`),
+  track: (orderNumber) => api.get(`/orders/track/${orderNumber}`),
+  // Admin
+  updateStatus: (id, data) => api.put(`/admin/orders/${id}/status`, data),
+};
+
+// Payments API
+export const paymentsAPI = {
+  getMethods: () => api.get('/payments/methods'),
+  getOne: (id) => api.get(`/payments/${id}`),
+  process: (orderId, data) => api.post(`/payments/process/${orderId}`, data),
+  // Admin
+  getAll: (params) => api.get('/admin/payments', { params }),
+  updateStatus: (id, data) => api.put(`/admin/payments/${id}/status`, data),
+  refund: (id, data) => api.post(`/admin/payments/${id}/refund`, data),
+};
+
+// Deliveries API
+export const deliveriesAPI = {
+  track: (trackingNumber) => api.get(`/deliveries/track/${trackingNumber}`),
+  // Admin
+  getAll: (params) => api.get('/admin/deliveries', { params }),
+  getOne: (id) => api.get(`/admin/deliveries/${id}`),
+  assignRider: (id, riderId) => api.post(`/admin/deliveries/${id}/assign`, { rider_id: riderId }),
+  updateStatus: (id, data) => api.put(`/admin/deliveries/${id}/status`, data),
+  getAvailableRiders: () => api.get('/admin/deliveries-riders'),
+  // Rider
+  riderGetAll: (params) => api.get('/rider/deliveries', { params }),
+  riderGetOne: (id) => api.get(`/rider/deliveries/${id}`),
+  riderUpdateStatus: (id, data) => api.put(`/rider/deliveries/${id}/status`, data),
+  riderUpdateLocation: (id, data) => api.put(`/rider/deliveries/${id}/location`, data),
+  riderComplete: (id, data) => api.post(`/rider/deliveries/${id}/complete`, data),
+  riderStats: () => api.get('/rider/stats'),
+};
+
+// Reviews API
+export const reviewsAPI = {
+  getForProduct: (productId, params) => api.get(`/products/${productId}/reviews`, { params }),
+  create: (data) => api.post('/reviews', data),
+  update: (id, data) => api.put(`/reviews/${id}`, data),
+  delete: (id) => api.delete(`/reviews/${id}`),
+  markHelpful: (id) => api.post(`/reviews/${id}/helpful`),
+  // Admin
+  getPending: (params) => api.get('/admin/reviews/pending', { params }),
+  approve: (id) => api.post(`/admin/reviews/${id}/approve`),
+  reject: (id) => api.post(`/admin/reviews/${id}/reject`),
+};
+
+// Reports API
+export const reportsAPI = {
+  getDashboard: () => api.get('/admin/reports/dashboard'),
+  getAll: (params) => api.get('/admin/reports', { params }),
+  getOne: (id) => api.get(`/admin/reports/${id}`),
+  generate: (data) => api.post('/admin/reports', data),
+  delete: (id) => api.delete(`/admin/reports/${id}`),
+};
+
+// Users API (Admin)
+export const usersAPI = {
+  getAll: (params) => api.get('/admin/users', { params }),
+  getOne: (id) => api.get(`/admin/users/${id}`),
+  create: (data) => api.post('/admin/users', data),
+  update: (id, data) => api.put(`/admin/users/${id}`, data),
+  delete: (id) => api.delete(`/admin/users/${id}`),
+  toggleStatus: (id) => api.post(`/admin/users/${id}/toggle-status`),
+  getRiders: () => api.get('/admin/users-riders'),
+  getCustomers: (params) => api.get('/admin/users-customers', { params }),
+};
+
+// Settings API
+export const settingsAPI = {
+  getPublic: () => api.get('/settings/public'),
+  // Admin
+  getAll: (params) => api.get('/admin/settings', { params }),
+  getGroups: () => api.get('/admin/settings/groups'),
+  getByGroup: (group) => api.get(`/admin/settings/group/${group}`),
+  save: (data) => api.post('/admin/settings', data),
+  bulkUpdate: (settings) => api.put('/admin/settings/bulk', { settings }),
+  delete: (key) => api.delete(`/admin/settings/${key}`),
+  clearCache: () => api.post('/admin/settings/clear-cache'),
+  backup: () => api.post('/admin/settings/backup'),
+  getSystemInfo: () => api.get('/admin/settings/system-info'),
+};
+
+export default api;

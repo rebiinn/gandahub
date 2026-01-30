@@ -1,0 +1,167 @@
+import { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { FaEnvelope, FaLock, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'react-toastify';
+import Input from '../components/common/Input';
+import Button from '../components/common/Button';
+
+const Login = () => {
+  const { login, isAuthenticated, isAdmin, isRider } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const from = location.state?.from?.pathname || '/';
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm();
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    if (isAdmin) {
+      navigate('/admin');
+    } else if (isRider) {
+      navigate('/rider');
+    } else {
+      navigate(from);
+    }
+  }
+
+  const onSubmit = async (data) => {
+    try {
+      setLoading(true);
+      const user = await login(data.email, data.password);
+      toast.success('Welcome back!');
+      
+      // Redirect based on role
+      if (user.role === 'admin') {
+        navigate('/admin');
+      } else if (user.role === 'rider') {
+        navigate('/rider');
+      } else {
+        navigate(from);
+      }
+    } catch (error) {
+      const message = error.response?.data?.message || 'Login failed. Please try again.';
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-primary-100 to-cosmetic-champagne flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <Link to="/" className="inline-block">
+              <h1 className="font-display text-3xl font-bold text-primary-600">
+                Ganda Hub
+              </h1>
+            </Link>
+            <h2 className="mt-4 text-2xl font-semibold text-gray-800">
+              Welcome Back
+            </h2>
+            <p className="mt-2 text-gray-600">
+              Sign in to your account to continue
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <Input
+              label="Email Address"
+              type="email"
+              icon={FaEnvelope}
+              placeholder="you@example.com"
+              error={errors.email?.message}
+              {...register('email', {
+                required: 'Email is required',
+                pattern: {
+                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                  message: 'Invalid email address',
+                },
+              })}
+            />
+
+            <div className="relative">
+              <Input
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                icon={FaLock}
+                placeholder="Enter your password"
+                error={errors.password?.message}
+                {...register('password', {
+                  required: 'Password is required',
+                  minLength: {
+                    value: 6,
+                    message: 'Password must be at least 6 characters',
+                  },
+                })}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-9 text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-600">Remember me</span>
+              </label>
+              <Link
+                to="/forgot-password"
+                className="text-sm text-primary-600 hover:text-primary-700"
+              >
+                Forgot password?
+              </Link>
+            </div>
+
+            <Button type="submit" variant="primary" fullWidth loading={loading}>
+              Sign In
+            </Button>
+          </form>
+
+          {/* Divider */}
+          <div className="my-8 flex items-center">
+            <div className="flex-grow border-t border-gray-200"></div>
+            <span className="px-4 text-sm text-gray-500">or</span>
+            <div className="flex-grow border-t border-gray-200"></div>
+          </div>
+
+          {/* Social Login */}
+          <div className="space-y-3">
+            <button className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+              <span className="text-gray-700">Continue with Google</span>
+            </button>
+          </div>
+
+          {/* Sign Up Link */}
+          <p className="mt-8 text-center text-gray-600">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">
+              Sign up
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;

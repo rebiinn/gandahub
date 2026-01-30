@@ -1,0 +1,166 @@
+import { Link } from 'react-router-dom';
+import { FaFacebook, FaInstagram, FaTwitter, FaTiktok, FaEnvelope, FaPhone, FaMapMarkerAlt } from 'react-icons/fa';
+
+const Footer = () => {
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <footer className="bg-gray-900 text-gray-300">
+      {/* Newsletter Section */}
+      <div className="bg-primary-600 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-center md:text-left">
+              <h3 className="text-xl font-semibold text-white">
+                Subscribe to Our Newsletter
+              </h3>
+              <p className="text-primary-100">
+                Get exclusive deals, beauty tips, and new arrivals straight to your inbox!
+              </p>
+            </div>
+            <form className="flex w-full md:w-auto">
+              <input
+                type="email"
+                placeholder="Enter your email"
+                className="px-4 py-3 rounded-l-lg w-full md:w-64 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="px-6 py-3 bg-gray-900 text-white rounded-r-lg hover:bg-gray-800 transition-colors"
+              >
+                Subscribe
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Footer */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          {/* Brand */}
+          <div>
+            <h2 className="font-display text-2xl font-bold text-white mb-4">
+              Ganda Hub
+            </h2>
+            <p className="text-gray-400 mb-4">
+              Your one-stop shop for premium cosmetics and skincare products. 
+              Discover beauty that enhances your natural glow.
+            </p>
+            <div className="flex space-x-4">
+              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                <FaFacebook className="w-5 h-5" />
+              </a>
+              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                <FaInstagram className="w-5 h-5" />
+              </a>
+              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                <FaTwitter className="w-5 h-5" />
+              </a>
+              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                <FaTiktok className="w-5 h-5" />
+              </a>
+            </div>
+          </div>
+
+          {/* Quick Links */}
+          <div>
+            <h3 className="text-white font-semibold mb-4">Quick Links</h3>
+            <ul className="space-y-2">
+              <li>
+                <Link to="/products" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Shop All
+                </Link>
+              </li>
+              <li>
+                <Link to="/products?on_sale=true" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Sale Items
+                </Link>
+              </li>
+              <li>
+                <Link to="/products?featured=true" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Best Sellers
+                </Link>
+              </li>
+              <li>
+                <Link to="/track-order" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Track Order
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Customer Service */}
+          <div>
+            <h3 className="text-white font-semibold mb-4">Customer Service</h3>
+            <ul className="space-y-2">
+              <li>
+                <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Shipping Info
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Returns & Exchanges
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  FAQs
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Privacy Policy
+                </a>
+              </li>
+              <li>
+                <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Terms of Service
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Contact */}
+          <div>
+            <h3 className="text-white font-semibold mb-4">Contact Us</h3>
+            <ul className="space-y-3">
+              <li className="flex items-start gap-3">
+                <FaMapMarkerAlt className="w-5 h-5 text-primary-400 flex-shrink-0 mt-0.5" />
+                <span>123 Beauty Street, Makati City, Philippines 1234</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <FaPhone className="w-5 h-5 text-primary-400 flex-shrink-0" />
+                <span>+63 (02) 8888-GANDA</span>
+              </li>
+              <li className="flex items-center gap-3">
+                <FaEnvelope className="w-5 h-5 text-primary-400 flex-shrink-0" />
+                <span>hello@gandahub.com</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Bar */}
+      <div className="border-t border-gray-800 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-gray-500 text-sm">
+              &copy; {currentYear} Ganda Hub Cosmetics. All rights reserved.
+            </p>
+            <div className="flex items-center gap-4">
+              <img src="/visa.svg" alt="Visa" className="h-6" onError={(e) => e.target.style.display = 'none'} />
+              <img src="/mastercard.svg" alt="Mastercard" className="h-6" onError={(e) => e.target.style.display = 'none'} />
+              <img src="/gcash.svg" alt="GCash" className="h-6" onError={(e) => e.target.style.display = 'none'} />
+              <span className="text-gray-500 text-sm">Secure Payment</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+export default Footer;
