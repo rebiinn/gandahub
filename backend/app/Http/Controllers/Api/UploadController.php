@@ -56,11 +56,9 @@ class UploadController extends Controller
      */
     private function isCloudinaryConfigured(): bool
     {
-        $cloudName = getenv('CLOUDINARY_CLOUD_NAME') ?: ($_ENV['CLOUDINARY_CLOUD_NAME'] ?? null);
-        $apiKey = getenv('CLOUDINARY_API_KEY') ?: ($_ENV['CLOUDINARY_API_KEY'] ?? null);
-        $apiSecret = getenv('CLOUDINARY_API_SECRET') ?: ($_ENV['CLOUDINARY_API_SECRET'] ?? null);
-        
-        return !empty($cloudName) && !empty($apiKey) && !empty($apiSecret);
+        return !empty(config('cloudinary.cloud_name')) 
+            && !empty(config('cloudinary.api_key')) 
+            && !empty(config('cloudinary.api_secret'));
     }
 
     /**
@@ -68,9 +66,9 @@ class UploadController extends Controller
      */
     private function uploadToCloudinary($file, string $folder): array
     {
-        $cloudName = getenv('CLOUDINARY_CLOUD_NAME') ?: ($_ENV['CLOUDINARY_CLOUD_NAME'] ?? '');
-        $apiKey = getenv('CLOUDINARY_API_KEY') ?: ($_ENV['CLOUDINARY_API_KEY'] ?? '');
-        $apiSecret = getenv('CLOUDINARY_API_SECRET') ?: ($_ENV['CLOUDINARY_API_SECRET'] ?? '');
+        $cloudName = config('cloudinary.cloud_name');
+        $apiKey = config('cloudinary.api_key');
+        $apiSecret = config('cloudinary.api_secret');
         
         $timestamp = time();
         $params = [
