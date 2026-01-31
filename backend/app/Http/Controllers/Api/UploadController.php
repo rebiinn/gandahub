@@ -30,8 +30,12 @@ class UploadController extends Controller
             $file = $request->file('image');
             $folder = $request->input('folder', 'products');
 
-            // Check if Cloudinary is configured (for production)
-            if ($this->isCloudinaryConfigured()) {
+            // Always try Cloudinary first in production
+            $cloudName = config('cloudinary.cloud_name') ?: getenv('CLOUDINARY_CLOUD_NAME');
+            $apiKey = config('cloudinary.api_key') ?: getenv('CLOUDINARY_API_KEY');
+            $apiSecret = config('cloudinary.api_secret') ?: getenv('CLOUDINARY_API_SECRET');
+
+            if (!empty($cloudName) && !empty($apiKey) && !empty($apiSecret)) {
                 $result = $this->uploadToCloudinary($file, $folder);
                 return $this->successResponse($result, 'Image uploaded successfully');
             }
@@ -45,9 +49,10 @@ class UploadController extends Controller
                 'url' => $url,
                 'path' => $path,
                 'filename' => $filename,
+                'note' => 'Using local storage. Cloudinary not configured.',
             ], 'Image uploaded successfully');
         } catch (\Exception $e) {
-            return $this->errorResponse('Failed to upload image: ' . $e->getMessage(), 500);
+            return $this->errorResponse('Upload failed: ' . $e->getMessage(), 500);
         }
     }
 
@@ -66,9 +71,9 @@ class UploadController extends Controller
      */
     private function uploadToCloudinary($file, string $folder): array
     {
-        $cloudName = config('cloudinary.cloud_name');
-        $apiKey = config('cloudinary.api_key');
-        $apiSecret = config('cloudinary.api_secret');
+        $cloudName = config('cloudinary.cloud_name') ?: getenv('CLOUDINARY_CLOUD_NAME');
+        $apiKey = config('cloudinary.api_key') ?: getenv('CLOUDINARY_API_KEY');
+        $apiSecret = config('cloudinary.api_secret') ?: getenv('CLOUDINARY_API_SECRET');
         
         $timestamp = time();
         $params = [
