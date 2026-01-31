@@ -17,41 +17,47 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Create Admin User
-        User::create([
-            'first_name' => 'Admin',
-            'last_name' => 'User',
-            'email' => 'admin@gandahub.com',
-            'password' => Hash::make('password123'),
-            'role' => 'admin',
-            'phone' => '+63 912 345 6789',
-            'is_active' => true,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@gandahub.com'],
+            [
+                'first_name' => 'Admin',
+                'last_name' => 'User',
+                'password' => Hash::make('password123'),
+                'role' => 'admin',
+                'phone' => '+63 912 345 6789',
+                'is_active' => true,
+            ]
+        );
 
         // Create Sample Rider
-        User::create([
-            'first_name' => 'Juan',
-            'last_name' => 'Rider',
-            'email' => 'rider@gandahub.com',
-            'password' => Hash::make('password123'),
-            'role' => 'rider',
-            'phone' => '+63 912 345 6780',
-            'is_active' => true,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'rider@gandahub.com'],
+            [
+                'first_name' => 'Juan',
+                'last_name' => 'Rider',
+                'password' => Hash::make('password123'),
+                'role' => 'rider',
+                'phone' => '+63 912 345 6780',
+                'is_active' => true,
+            ]
+        );
 
         // Create Sample Customer
-        User::create([
-            'first_name' => 'Maria',
-            'last_name' => 'Customer',
-            'email' => 'customer@gandahub.com',
-            'password' => Hash::make('password123'),
-            'role' => 'customer',
-            'phone' => '+63 912 345 6781',
-            'address' => '123 Main Street, Brgy. Sample',
-            'city' => 'Makati City',
-            'state' => 'Metro Manila',
-            'zip_code' => '1234',
-            'is_active' => true,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'customer@gandahub.com'],
+            [
+                'first_name' => 'Maria',
+                'last_name' => 'Customer',
+                'password' => Hash::make('password123'),
+                'role' => 'customer',
+                'phone' => '+63 912 345 6781',
+                'address' => '123 Main Street, Brgy. Sample',
+                'city' => 'Makati City',
+                'state' => 'Metro Manila',
+                'zip_code' => '1234',
+                'is_active' => true,
+            ]
+        );
 
         // Create Categories
         $categories = [
@@ -64,7 +70,10 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($categories as $category) {
-            Category::create(array_merge($category, ['is_active' => true]));
+            Category::firstOrCreate(
+                ['slug' => $category['slug']],
+                array_merge($category, ['is_active' => true])
+            );
         }
 
         // Create Sample Products with images
@@ -210,7 +219,10 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($products as $product) {
-            Product::create($product);
+            Product::firstOrCreate(
+                ['slug' => $product['slug']],
+                $product
+            );
         }
 
         // Create System Settings
@@ -226,7 +238,10 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($settings as $setting) {
-            SystemSetting::create($setting);
+            SystemSetting::firstOrCreate(
+                ['key' => $setting['key']],
+                $setting
+            );
         }
 
         $this->command->info('Database seeded successfully!');
