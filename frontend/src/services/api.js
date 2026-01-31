@@ -176,4 +176,25 @@ export const settingsAPI = {
   getSystemInfo: () => api.get('/admin/settings/system-info'),
 };
 
+// Upload API
+export const uploadAPI = {
+  uploadImage: (file, folder = 'products') => {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('folder', folder);
+    return api.post('/admin/upload/image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadMultiple: (files, folder = 'products') => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('images[]', file));
+    formData.append('folder', folder);
+    return api.post('/admin/upload/images', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  delete: (path) => api.delete('/admin/upload', { data: { path } }),
+};
+
 export default api;

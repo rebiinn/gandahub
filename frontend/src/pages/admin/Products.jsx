@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaSearch } from 'react-icons/fa';
-import { productsAPI, categoriesAPI } from '../../services/api';
+import { useState, useEffect, useRef } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaImage, FaSpinner } from 'react-icons/fa';
+import { productsAPI, categoriesAPI, uploadAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
@@ -26,9 +26,12 @@ const Products = () => {
     sale_price: '',
     stock_quantity: '',
     brand: '',
+    thumbnail: '',
     is_featured: false,
     is_active: true,
   });
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchProducts();
@@ -76,6 +79,7 @@ const Products = () => {
         sale_price: product.sale_price || '',
         stock_quantity: product.stock_quantity || '',
         brand: product.brand || '',
+        thumbnail: product.thumbnail || '',
         is_featured: product.is_featured || false,
         is_active: product.is_active !== false,
       });
@@ -90,11 +94,46 @@ const Products = () => {
         sale_price: '',
         stock_quantity: '',
         brand: '',
+        thumbnail: '',
         is_featured: false,
         is_active: true,
       });
     }
     setShowModal(true);
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const response = await uploadAPI.uploadImage(file, 'products');
+      const imageUrl = response.data.data.url;
+      setFormData({ ...formData, thumbnail: imageUrl });
+      toast.success('Image uploaded successfully');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Failed to upload image');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -256,6 +295,66 @@ const Products = () => {
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Image Upload Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Product Image</label>
+            <div className="flex items-start gap-4">
+              {/* Image Preview */}
+              <div className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+                {formData.thumbnail ? (
+                  <img
+                    src={formData.thumbnail}
+                    alt="Product preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <FaImage className="w-8 h-8 text-gray-400" />
+                )}
+              </div>
+              
+              {/* Upload Controls */}
+              <div className="flex-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  id="product-image"
+                />
+                <label
+                  htmlFor="product-image"
+                  className={`inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {uploading ? (
+                    <>
+                      <FaSpinner className="w-4 h-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <FaImage className="w-4 h-4" />
+                      Choose Image
+                    </>
+                  )}
+                </label>
+                <p className="text-xs text-gray-500 mt-2">
+                  JPEG, PNG, GIF, or WebP. Max 5MB.
+                </p>
+                
+                {/* Manual URL Input */}
+                <div className="mt-3">
+                  <Input
+                    label="Or enter image URL"
+                    placeholder="https://example.com/image.jpg"
+                    value={formData.thumbnail}
+                    onChange={(e) => setFormData({ ...formData, thumbnail: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <Input
             label="Product Name"
             value={formData.name}

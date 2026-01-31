@@ -67,7 +67,7 @@ class DatabaseSeeder extends Seeder
             Category::create(array_merge($category, ['is_active' => true]));
         }
 
-        // Create Sample Products
+        // Create Sample Products with images
         $products = [
             [
                 'category_id' => 1,
@@ -80,6 +80,7 @@ class DatabaseSeeder extends Seeder
                 'sale_price' => 749.00,
                 'stock_quantity' => 50,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/foundation-lipgloss.png',
                 'is_featured' => true,
                 'is_active' => true,
             ],
@@ -93,6 +94,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 399.00,
                 'stock_quantity' => 100,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/foundation-lipgloss.png',
                 'is_featured' => true,
                 'is_active' => true,
             ],
@@ -107,6 +109,7 @@ class DatabaseSeeder extends Seeder
                 'sale_price' => 999.00,
                 'stock_quantity' => 30,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/palette-serum.png',
                 'is_featured' => true,
                 'is_active' => true,
             ],
@@ -120,6 +123,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 1499.00,
                 'stock_quantity' => 45,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/palette-serum.png',
                 'is_featured' => true,
                 'is_active' => true,
             ],
@@ -133,6 +137,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 549.00,
                 'stock_quantity' => 80,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/lipstick-mascara.png',
                 'is_active' => true,
             ],
             [
@@ -145,6 +150,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 599.00,
                 'stock_quantity' => 60,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/lipstick-mascara.png',
                 'is_active' => true,
             ],
             [
@@ -157,6 +163,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 899.00,
                 'stock_quantity' => 55,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/moisturizer-nailpolish.png',
                 'is_active' => true,
             ],
             [
@@ -170,6 +177,7 @@ class DatabaseSeeder extends Seeder
                 'sale_price' => 649.00,
                 'stock_quantity' => 40,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/moisturizer-nailpolish.png',
                 'is_active' => true,
             ],
             [
@@ -182,6 +190,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 1999.00,
                 'stock_quantity' => 25,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/brushset-primer.png',
                 'is_featured' => true,
                 'is_active' => true,
             ],
@@ -195,6 +204,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 699.00,
                 'stock_quantity' => 65,
                 'brand' => 'Ganda Hub',
+                'thumbnail' => '/images/products/brushset-primer.png',
                 'is_active' => true,
             ],
         ];

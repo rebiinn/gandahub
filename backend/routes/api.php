@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SystemSettingController;
+use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -90,6 +91,11 @@ Route::prefix('v1')->group(function () {
         // Admin routes
         Route::middleware('role:admin')->prefix('admin')->group(function () {
             
+            // File uploads
+            Route::post('/upload/image', [UploadController::class, 'uploadImage']);
+            Route::post('/upload/images', [UploadController::class, 'uploadMultiple']);
+            Route::delete('/upload', [UploadController::class, 'delete']);
+
             // Users management
             Route::get('/users', [UserController::class, 'index']);
             Route::post('/users', [UserController::class, 'store']);
