@@ -23,12 +23,14 @@ const Payments = () => {
     fetchPayments();
   }, []);
 
-  const fetchPayments = async (page = 1) => {
+  const fetchPayments = async (page = 1, statusOverride, methodOverride) => {
     try {
       setLoading(true);
       const params = { page };
-      if (statusFilter) params.status = statusFilter;
-      if (methodFilter) params.payment_method = methodFilter;
+      const status = statusOverride !== undefined ? statusOverride : statusFilter;
+      const method = methodOverride !== undefined ? methodOverride : methodFilter;
+      if (status) params.status = status;
+      if (method) params.payment_method = method;
       const response = await paymentsAPI.getAll(params);
       setPayments(response.data.data || []);
       setMeta(response.data.meta || { current_page: 1, last_page: 1 });
@@ -114,8 +116,9 @@ const Payments = () => {
           <select
             value={statusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value);
-              fetchPayments();
+              const val = e.target.value;
+              setStatusFilter(val);
+              fetchPayments(1, val, methodFilter);
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
           >
@@ -127,8 +130,9 @@ const Payments = () => {
           <select
             value={methodFilter}
             onChange={(e) => {
-              setMethodFilter(e.target.value);
-              fetchPayments();
+              const val = e.target.value;
+              setMethodFilter(val);
+              fetchPayments(1, statusFilter, val);
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
           >
