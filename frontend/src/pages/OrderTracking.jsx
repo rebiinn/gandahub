@@ -58,7 +58,7 @@ const OrderTracking = () => {
       cancelled: 'danger',
       failed: 'danger',
     };
-    return <Badge variant={variants[status] || 'default'} size="lg">{status?.replace('_', ' ')}</Badge>;
+    return <Badge variant={variants[status] || 'default'} size="lg">{status?.replace(/_/g, ' ')}</Badge>;
   };
 
   return (
