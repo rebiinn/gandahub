@@ -49,7 +49,7 @@ const Home = () => {
           <div className="grid lg:grid-cols-2 gap-8 items-center">
             <div className="text-center lg:text-left">
               <span className="inline-block px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-full mb-4">
-                New Collection 2024
+                New Collection 2026
               </span>
               <h1 className="text-4xl lg:text-6xl font-display font-bold text-gray-800 mb-4">
                 Discover Your

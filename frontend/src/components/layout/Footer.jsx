@@ -128,15 +128,15 @@ const Footer = () => {
             <ul className="space-y-3">
               <li className="flex items-start gap-3">
                 <FaMapMarkerAlt className="w-5 h-5 text-primary-400 flex-shrink-0 mt-0.5" />
-                <span>123 Beauty Street, Makati City, Philippines 1234</span>
+                <span>San Francisco St., Butuan City, Philippines 8600</span>
               </li>
               <li className="flex items-center gap-3">
                 <FaPhone className="w-5 h-5 text-primary-400 flex-shrink-0" />
-                <span>+63 (02) 8888-GANDA</span>
+                <span>+63 964 988 7606</span>
               </li>
               <li className="flex items-center gap-3">
                 <FaEnvelope className="w-5 h-5 text-primary-400 flex-shrink-0" />
-                <span>hello@gandahub.com</span>
+                <span>cosmetics@gandahub.com</span>
               </li>
             </ul>
           </div>
