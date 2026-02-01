@@ -65,7 +65,7 @@ const Register = () => {
               <Input
                 label="First Name"
                 icon={FaUser}
-                placeholder="John"
+                placeholder="Ravena"
                 error={errors.first_name?.message}
                 {...register('first_name', {
                   required: 'First name is required',
@@ -74,7 +74,7 @@ const Register = () => {
               <Input
                 label="Last Name"
                 icon={FaUser}
-                placeholder="Doe"
+                placeholder="Gwapa"
                 error={errors.last_name?.message}
                 {...register('last_name', {
                   required: 'Last name is required',
@@ -86,7 +86,7 @@ const Register = () => {
               label="Email Address"
               type="email"
               icon={FaEnvelope}
-              placeholder="you@example.com"
+              placeholder="cyven@example.com"
               error={errors.email?.message}
               {...register('email', {
                 required: 'Email is required',
@@ -101,7 +101,7 @@ const Register = () => {
               label="Phone Number (Optional)"
               type="tel"
               icon={FaPhone}
-              placeholder="+63 912 345 6789"
+              placeholder="+63 964 988 7606"
               error={errors.phone?.message}
               {...register('phone')}
             />
