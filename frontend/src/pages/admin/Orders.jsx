@@ -91,7 +91,7 @@ const Orders = () => {
       cancelled: 'danger',
       refunded: 'danger',
     };
-    return <Badge variant={variants[status] || 'default'}>{status?.replace('_', ' ')}</Badge>;
+    return <Badge variant={variants[status] || 'default'}>{status?.replace(/_/g, ' ')}</Badge>;
   };
 
   const statuses = ['pending', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'];
@@ -122,7 +122,7 @@ const Orders = () => {
           >
             <option value="">All Statuses</option>
             {statuses.map((status) => (
-              <option key={status} value={status}>{status.replace('_', ' ')}</option>
+              <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
             ))}
           </select>
           <Button type="submit" variant="primary">
@@ -217,7 +217,7 @@ const Orders = () => {
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
                 >
                   {statuses.map((status) => (
-                    <option key={status} value={status}>{status.replace('_', ' ')}</option>
+                    <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
                   ))}
                 </select>
               </div>
