@@ -540,7 +540,15 @@ const Checkout = () => {
                 </Button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
-                  By placing this order, you agree to our Terms of Service and Privacy Policy.
+                  By placing this order, you agree to our{' '}
+                  <Link to="/terms-of-service" className="text-primary-600 hover:text-primary-700 underline" target="_blank" rel="noopener noreferrer">
+                    Terms of Service
+                  </Link>{' '}
+                  and{' '}
+                  <Link to="/privacy-policy" className="text-primary-600 hover:text-primary-700 underline" target="_blank" rel="noopener noreferrer">
+                    Privacy Policy
+                  </Link>
+                  .
                 </p>
               </div>
             </div>

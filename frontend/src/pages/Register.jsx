@@ -153,13 +153,13 @@ const Register = () => {
               />
               <span className="text-sm text-gray-600">
                 I agree to the{' '}
-                <a href="#" className="text-primary-600 hover:text-primary-700">
+                <Link to="/terms-of-service" className="text-primary-600 hover:text-primary-700" target="_blank" rel="noopener noreferrer">
                   Terms of Service
-                </a>{' '}
+                </Link>{' '}
                 and{' '}
-                <a href="#" className="text-primary-600 hover:text-primary-700">
+                <Link to="/privacy-policy" className="text-primary-600 hover:text-primary-700" target="_blank" rel="noopener noreferrer">
                   Privacy Policy
-                </a>
+                </Link>
               </span>
             </label>
             {errors.terms && (

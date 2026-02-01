@@ -20,6 +20,11 @@ import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import OrderTracking from './pages/OrderTracking';
+import TermsOfService from './pages/TermsOfService';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import FAQs from './pages/FAQs';
+import ReturnsExchanges from './pages/ReturnsExchanges';
+import ShippingInfo from './pages/ShippingInfo';
 
 // Customer Pages
 import Profile from './pages/Profile';
@@ -75,6 +80,11 @@ function App() {
               <Route path="login" element={<Login />} />
               <Route path="register" element={<Register />} />
               <Route path="track-order" element={<OrderTracking />} />
+              <Route path="terms-of-service" element={<TermsOfService />} />
+              <Route path="privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="faqs" element={<FAQs />} />
+              <Route path="returns-exchanges" element={<ReturnsExchanges />} />
+              <Route path="shipping-info" element={<ShippingInfo />} />
               
               {/* Protected Customer Routes */}
               <Route path="checkout" element={
