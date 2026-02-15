@@ -54,10 +54,10 @@ const Footer = () => {
               <a href="https://www.instagram.com/gandahubcosmetics?igsh=MXNtdnUxbDYweDBmbw==" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary-400 transition-colors" aria-label="Ganda Hub Cosmetics on Instagram">
                 <FaInstagram className="w-5 h-5" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+              <a href="https://x.com/GandaHub99245" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary-400 transition-colors" aria-label="Ganda Hub Cosmetics on X (Twitter)">
                 <FaTwitter className="w-5 h-5" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+              <a href="https://www.tiktok.com/@ganda.hub.cosmeti?_r=1&_t=ZS-93wBJ9iMqKy" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary-400 transition-colors" aria-label="Ganda Hub Cosmetics on TikTok">
                 <FaTiktok className="w-5 h-5" />
               </a>
             </div>
