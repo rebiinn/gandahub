@@ -43,7 +43,7 @@ const ReturnsExchanges = () => {
         <section>
           <h2 className="text-xl font-semibold text-gray-900 mb-3">How to Request a Return or Exchange</h2>
           <ol className="list-decimal pl-6 space-y-2">
-            <li>Email us at cosmetics@gandahub.com with your order number and reason for return/exchange</li>
+            <li>Email us at cosmeticsgandahub@gmail.com with your order number and reason for return/exchange</li>
             <li>We will respond with instructions and, if approved, a return authorization</li>
             <li>Pack the item securely and ship it to the address we provide (customer is responsible for return shipping unless the item was defective or wrong)</li>
             <li>Once we receive and inspect the item, we will process your refund or ship the exchange</li>
@@ -78,7 +78,7 @@ const ReturnsExchanges = () => {
         <section>
           <h2 className="text-xl font-semibold text-gray-900 mb-3">Questions?</h2>
           <p>
-            For any questions about returns or exchanges, email cosmetics@gandahub.com or call +63 964 988 7606. See
+            For any questions about returns or exchanges, email cosmeticsgandahub@gmail.com or call +63 964 988 7606. See
             also our{' '}
             <Link to="/shipping-info" className="text-primary-600 hover:text-primary-700 underline">
               Shipping Info

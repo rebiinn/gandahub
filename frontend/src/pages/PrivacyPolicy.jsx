@@ -66,7 +66,7 @@ const PrivacyPolicy = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-3">6. Your Rights</h2>
           <p>
             Depending on applicable law, you may have the right to access, correct, or delete your personal data, or to
-            object to or restrict certain processing. To exercise these rights, contact us at cosmetics@gandahub.com.
+            object to or restrict certain processing. To exercise these rights, contact us at cosmeticsgandahub@gmail.com.
           </p>
         </section>
 
@@ -89,7 +89,7 @@ const PrivacyPolicy = () => {
         <section>
           <h2 className="text-xl font-semibold text-gray-900 mb-3">9. Contact Us</h2>
           <p>
-            For privacy-related questions or requests, contact us at cosmetics@gandahub.com or at our address listed in
+            For privacy-related questions or requests, contact us at cosmeticsgandahub@gmail.com or at our address listed in
             the footer of our website.
           </p>
         </section>

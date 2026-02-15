@@ -94,7 +94,7 @@ const ShippingInfo = () => {
         <section>
           <h2 className="text-xl font-semibold text-gray-900 mb-3">Questions?</h2>
           <p>
-            For shipping-related questions, contact us at cosmetics@gandahub.com or +63 964 988 7606. You can also
+            For shipping-related questions, contact us at cosmeticsgandahub@gmail.com or +63 964 988 7606. You can also
             check our{' '}
             <Link to="/faqs" className="text-primary-600 hover:text-primary-700 underline">
               FAQs

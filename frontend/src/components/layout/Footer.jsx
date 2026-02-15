@@ -48,10 +48,10 @@ const Footer = () => {
               Discover beauty that enhances your natural glow.
             </p>
             <div className="flex space-x-4">
-              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+              <a href="https://www.facebook.com/share/1H8bFKXeda/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary-400 transition-colors" aria-label="Ganda Hub Cosmetics on Facebook">
                 <FaFacebook className="w-5 h-5" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
+              <a href="https://www.instagram.com/gandahubcosmetics?igsh=MXNtdnUxbDYweDBmbw==" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-primary-400 transition-colors" aria-label="Ganda Hub Cosmetics on Instagram">
                 <FaInstagram className="w-5 h-5" />
               </a>
               <a href="#" className="text-gray-400 hover:text-primary-400 transition-colors">
@@ -136,7 +136,15 @@ const Footer = () => {
               </li>
               <li className="flex items-center gap-3">
                 <FaEnvelope className="w-5 h-5 text-primary-400 flex-shrink-0" />
-                <span>cosmetics@gandahub.com</span>
+                <a
+                  href="https://mail.google.com/mail/?view=cm&fs=1&to=cosmeticsgandahub@gmail.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-primary-400 transition-colors break-all"
+                  aria-label="Email Ganda Hub Cosmetics (opens Gmail)"
+                >
+                  cosmeticsgandahub@gmail.com
+                </a>
               </li>
             </ul>
           </div>

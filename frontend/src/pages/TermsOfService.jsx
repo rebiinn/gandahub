@@ -103,7 +103,7 @@ const TermsOfService = () => {
         <section>
           <h2 className="text-xl font-semibold text-gray-900 mb-3">10. Contact</h2>
           <p>
-            For questions about these Terms of Service, contact us at cosmetics@gandahub.com or visit our{' '}
+            For questions about these Terms of Service, contact us at cosmeticsgandahub@gmail.com or visit our{' '}
             <Link to="/" className="text-primary-600 hover:text-primary-700 underline">Contact</Link> section on the homepage.
           </p>
         </section>

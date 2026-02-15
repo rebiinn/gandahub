@@ -29,7 +29,7 @@ const faqItems = [
   },
   {
     question: 'How do I contact customer support?',
-    answer: 'Reach us at cosmetics@gandahub.com or call +63 964 988 7606. Our team typically responds within 24–48 hours on business days.',
+    answer: 'Reach us at cosmeticsgandahub@gmail.com or call +63 964 988 7606. Our team typically responds within 24–48 hours on business days.',
   },
   {
     question: 'Do you offer discounts or promotions?',
