@@ -39,7 +39,7 @@ const Dashboard = () => {
       delivered: 'success',
       failed: 'danger',
     };
-    return <Badge variant={variants[status] || 'default'}>{status?.replace('_', ' ')}</Badge>;
+    return <Badge variant={variants[status] || 'default'}>{status?.replace(/_/g, ' ')}</Badge>;
   };
 
   if (loading) {

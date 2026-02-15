@@ -73,7 +73,7 @@ const OrderDetail = () => {
       cancelled: 'danger',
       refunded: 'danger',
     };
-    return <Badge variant={variants[status] || 'default'} size="lg">{status.replace('_', ' ')}</Badge>;
+    return <Badge variant={variants[status] || 'default'} size="lg">{status.replace(/_/g, ' ')}</Badge>;
   };
 
   const orderStatuses = [
@@ -286,7 +286,7 @@ const OrderDetail = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Status</p>
-                <Badge variant="primary">{order.delivery.status?.replace('_', ' ')}</Badge>
+                <Badge variant="primary">{order.delivery.status?.replace(/_/g, ' ')}</Badge>
               </div>
               {order.delivery.rider && (
                 <div>

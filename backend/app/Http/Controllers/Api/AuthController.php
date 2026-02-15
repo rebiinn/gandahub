@@ -174,14 +174,27 @@ class AuthController extends Controller
     }
 
     /**
+     * Normalize FRONTEND_URL so redirects are always absolute (no leading slash).
+     */
+    private function getFrontendUrl(): string
+    {
+        $url = trim(env('FRONTEND_URL', 'http://localhost:5173'));
+        $url = rtrim($url, '/');
+        $url = ltrim($url, '/');
+        if ($url && !preg_match('#^https?://#i', $url)) {
+            $url = 'https://' . $url;
+        }
+        return $url ?: 'http://localhost:5173';
+    }
+
+    /**
      * Redirect to Google OAuth.
      */
     public function redirectToGoogle()
     {
         $clientId = config('services.google.client_id');
         if (empty($clientId)) {
-            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
-            return redirect("{$frontendUrl}/login?error=google_not_configured");
+            return redirect($this->getFrontendUrl() . '/login?error=google_not_configured');
         }
 
         $redirectUrl = config('services.google.redirect');
@@ -201,8 +214,7 @@ class AuthController extends Controller
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
         } catch (\Exception $e) {
-            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
-            return redirect("{$frontendUrl}/login?error=google_denied");
+            return redirect($this->getFrontendUrl() . '/login?error=google_denied');
         }
 
         $user = User::where('google_id', $googleUser->getId())->first();
@@ -228,14 +240,12 @@ class AuthController extends Controller
         }
 
         if (!$user->is_active) {
-            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
-            return redirect("{$frontendUrl}/login?error=account_deactivated");
+            return redirect($this->getFrontendUrl() . '/login?error=account_deactivated');
         }
 
         $user->update(['last_login_at' => now()]);
         $token = JWTAuth::fromUser($user);
-        $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
 
-        return redirect("{$frontendUrl}/login?token=" . urlencode($token));
+        return redirect($this->getFrontendUrl() . '/login?token=' . urlencode($token));
     }
 }
