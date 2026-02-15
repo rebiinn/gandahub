@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Laravel\Socialite\Facades\Socialite;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -170,5 +171,65 @@ class AuthController extends Controller
         $user->update(['password' => Hash::make($request->password)]);
 
         return $this->successResponse(null, 'Password changed successfully');
+    }
+
+    /**
+     * Redirect to Google OAuth.
+     */
+    public function redirectToGoogle()
+    {
+        $redirectUrl = config('services.google.redirect');
+        if (empty($redirectUrl)) {
+            $redirectUrl = url('/api/v1/auth/google/callback');
+        }
+        config(['services.google.redirect' => $redirectUrl]);
+
+        return Socialite::driver('google')->redirect();
+    }
+
+    /**
+     * Handle Google OAuth callback: find or create user, return JWT via redirect to frontend.
+     */
+    public function handleGoogleCallback()
+    {
+        try {
+            $googleUser = Socialite::driver('google')->user();
+        } catch (\Exception $e) {
+            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
+            return redirect("{$frontendUrl}/login?error=google_denied");
+        }
+
+        $user = User::where('google_id', $googleUser->getId())->first();
+
+        if (!$user) {
+            $user = User::where('email', $googleUser->getEmail())->first();
+            if ($user) {
+                $user->update(['google_id' => $googleUser->getId()]);
+            } else {
+                $name = $googleUser->getName();
+                $parts = preg_match('/\s+/', $name)
+                    ? explode(' ', $name, 2)
+                    : [$name, ''];
+                $user = User::create([
+                    'first_name' => $parts[0] ?? $name,
+                    'last_name' => $parts[1] ?? '',
+                    'email' => $googleUser->getEmail(),
+                    'google_id' => $googleUser->getId(),
+                    'password' => Hash::make(uniqid('google_', true)),
+                    'role' => 'customer',
+                ]);
+            }
+        }
+
+        if (!$user->is_active) {
+            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
+            return redirect("{$frontendUrl}/login?error=account_deactivated");
+        }
+
+        $user->update(['last_login_at' => now()]);
+        $token = JWTAuth::fromUser($user);
+        $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
+
+        return redirect("{$frontendUrl}/login?token=" . urlencode($token));
     }
 }

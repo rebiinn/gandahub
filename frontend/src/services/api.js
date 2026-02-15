@@ -39,6 +39,9 @@ api.interceptors.response.use(
   }
 );
 
+// Base URL for redirects (e.g. Google OAuth)
+const apiBaseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+
 // Auth API
 export const authAPI = {
   register: (data) => api.post('/register', data),
@@ -48,6 +51,8 @@ export const authAPI = {
   refresh: () => api.post('/refresh'),
   updateProfile: (data) => api.put('/profile', data),
   changePassword: (data) => api.put('/change-password', data),
+  /** URL to start Google sign-in (open in same window). */
+  getGoogleAuthURL: () => `${apiBaseURL}/auth/google`,
 };
 
 // Products API

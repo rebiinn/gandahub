@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { FaEnvelope, FaLock, FaEye, FaEyeSlash } from 'react-icons/fa';
@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import Input from '../components/common/Input';
 import Button from '../components/common/Button';
+import { authAPI } from '../services/api';
 
 const Login = () => {
   const { login, isAuthenticated, isAdmin, isRider } = useAuth();
@@ -15,6 +16,43 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   const from = location.state?.from?.pathname || '/';
+
+  // Handle return from Google OAuth (?token=... or ?error=...)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    const error = params.get('error');
+    if (error) {
+      if (error === 'google_denied') {
+        toast.error('Google sign-in was cancelled or failed.');
+      } else if (error === 'account_deactivated') {
+        toast.error('Your account has been deactivated.');
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
+      window.history.replaceState({}, '', location.pathname);
+      return;
+    }
+    if (token) {
+      (async () => {
+        try {
+          localStorage.setItem('token', token);
+          const response = await authAPI.me();
+          const userData = response.data.data;
+          localStorage.setItem('user', JSON.stringify(userData));
+          window.history.replaceState({}, '', location.pathname);
+          toast.success('Welcome back!');
+          const target = userData.role === 'admin' ? '/admin' : userData.role === 'rider' ? '/rider' : from;
+          window.location.href = target; // full navigation so AuthContext picks up token
+        } catch (err) {
+          toast.error('Session invalid. Please sign in again.');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.history.replaceState({}, '', location.pathname);
+        }
+      })();
+    }
+  }, [location.search, location.pathname, from]);
 
   const {
     register,
@@ -145,10 +183,13 @@ const Login = () => {
 
           {/* Social Login */}
           <div className="space-y-3">
-            <button className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <a
+              href={authAPI.getGoogleAuthURL()}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 no-underline"
+            >
               <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-              <span className="text-gray-700">Continue with Google</span>
-            </button>
+              <span>Continue with Google</span>
+            </a>
           </div>
 
           {/* Sign Up Link */}

@@ -26,6 +26,8 @@ Route::prefix('v1')->group(function () {
     // Authentication
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
+    Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
     // Public product routes
     Route::get('/products', [ProductController::class, 'index']);
