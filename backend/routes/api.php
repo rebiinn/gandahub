@@ -28,6 +28,8 @@ Route::prefix('v1')->group(function () {
         $debug = [
             'db_host_set' => !empty(env('DB_HOST')),
             'database_url_set' => !empty(env('DATABASE_URL')),
+            'mysql_url_set' => !empty(env('MYSQL_URL')),
+            'config_url_set' => !empty(config('database.connections.mysql.url')),
         ];
         try {
             \Illuminate\Support\Facades\DB::connection()->getPdo();

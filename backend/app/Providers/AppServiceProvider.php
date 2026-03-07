@@ -23,6 +23,30 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        //
+        $this->ensureDatabaseUrlForRailway();
+    }
+
+    /**
+     * When DATABASE_URL and MYSQL_URL are not set (e.g. Railway only injects DB_* or MYSQLHOST etc.),
+     * build a mysql:// URL from components so Laravel uses a single connection string.
+     */
+    protected function ensureDatabaseUrlForRailway(): void
+    {
+        $url = config('database.connections.mysql.url');
+        if (!empty($url)) {
+            return;
+        }
+        $host = env('DB_HOST', env('MYSQLHOST', env('MYSQL_HOST')));
+        $port = env('DB_PORT', env('MYSQLPORT', env('MYSQL_PORT', '3306')));
+        $database = env('DB_DATABASE', env('MYSQLDATABASE', env('MYSQL_DATABASE')));
+        $username = env('DB_USERNAME', env('MYSQLUSER', env('MYSQL_USER')));
+        $password = env('DB_PASSWORD', env('MYSQLPASSWORD', env('MYSQL_PASSWORD')));
+
+        if (empty($host) || empty($database) || $username === null) {
+            return;
+        }
+        $password = $password !== null ? rawurlencode($password) : '';
+        $built = "mysql://{$username}:{$password}@{$host}:{$port}/{$database}";
+        config(['database.connections.mysql.url' => $built]);
     }
 }
