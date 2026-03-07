@@ -30,9 +30,21 @@ RUN composer run-script post-autoload-dump || true
 RUN chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 RUN mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/logs
 
-# Make entrypoint executable
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+# Inline entrypoint so build never depends on docker-entrypoint.sh in context
+RUN set -e; \
+  echo '#!/bin/bash' > /docker-entrypoint.sh; \
+  echo 'set -e' >> /docker-entrypoint.sh; \
+  echo 'echo "=== Environment Debug ==="' >> /docker-entrypoint.sh; \
+  echo 'echo "DB_HOST: $DB_HOST" "DB_PORT: $DB_PORT" "APP_KEY set: $([ -n \"$APP_KEY\" ] && echo yes || echo no)"' >> /docker-entrypoint.sh; \
+  echo 'echo "=== Running database migrations ==="' >> /docker-entrypoint.sh; \
+  echo 'php artisan migrate --force 2>&1 || echo "Migration failed"' >> /docker-entrypoint.sh; \
+  echo 'echo "=== Seeding database ==="' >> /docker-entrypoint.sh; \
+  echo 'php artisan db:seed --force 2>&1 || echo "Seeding skipped"' >> /docker-entrypoint.sh; \
+  echo 'php artisan config:clear 2>&1 || true' >> /docker-entrypoint.sh; \
+  echo 'php artisan cache:clear 2>&1 || true' >> /docker-entrypoint.sh; \
+  echo 'echo "=== Starting Laravel server ==="' >> /docker-entrypoint.sh; \
+  echo 'exec php artisan serve --host=0.0.0.0 --port=8080' >> /docker-entrypoint.sh; \
+  chmod +x /docker-entrypoint.sh
 
 EXPOSE 8080
 
