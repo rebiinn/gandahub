@@ -31,7 +31,7 @@ RUN set -e; \
   echo '#!/bin/bash' > /docker-entrypoint.sh; \
   echo 'set -e' >> /docker-entrypoint.sh; \
   echo 'echo "=== Environment Debug ==="' >> /docker-entrypoint.sh; \
-  echo 'echo "DB_HOST: $DB_HOST" "DB_PORT: $DB_PORT" "APP_KEY set: $([ -n \"$APP_KEY\" ] && echo yes || echo no)"' >> /docker-entrypoint.sh; \
+  echo 'echo "DATABASE_URL set: $([ -n \"$DATABASE_URL\" ] && echo yes || echo no)" "APP_KEY set: $([ -n \"$APP_KEY\" ] && echo yes || echo no)"' >> /docker-entrypoint.sh; \
   echo 'echo "=== Running database migrations ==="' >> /docker-entrypoint.sh; \
   echo 'php artisan migrate --force 2>&1 || echo "Migration failed"' >> /docker-entrypoint.sh; \
   echo 'echo "=== Seeding database ==="' >> /docker-entrypoint.sh; \

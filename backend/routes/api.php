@@ -22,7 +22,18 @@ use Illuminate\Support\Facades\Route;
 
 // Public routes
 Route::prefix('v1')->group(function () {
-    
+
+    // Health check (DB connectivity from web process)
+    Route::get('/health', function () {
+        try {
+            \Illuminate\Support\Facades\DB::connection()->getPdo();
+            \Illuminate\Support\Facades\DB::connection()->getDatabaseName();
+            return response()->json(['ok' => true, 'database' => 'connected']);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    });
+
     // Authentication
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);

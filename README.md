@@ -59,9 +59,10 @@ Without `VITE_API_URL` pointing to your Railway backend (e.g. `https://websystem
    - **FRONTEND_URL** = your Vercel URL, e.g. `https://websystemprojectf.vercel.app`  
      (Required for CORS and OAuth redirects.)
    - **APP_DEBUG** = `false` in production (so DB/stack traces are not sent to the frontend).
-3. **Database:** The app reads `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`. If you use Railway’s **MySQL** service, add its variables to this service:
-   - Either use **Variable Reference** (e.g. reference `MYSQLHOST` as `DB_HOST`, `MYSQLPORT` as `DB_PORT`, etc.), **or**
-   - Copy the MySQL service’s connection variables into this service and set **DB_HOST**, **DB_PORT**, **DB_DATABASE**, **DB_USERNAME**, **DB_PASSWORD** (the app also accepts **MYSQLHOST**, **MYSQLPORT**, **MYSQLDATABASE**, **MYSQLUSER**, **MYSQLPASSWORD** if `DB_*` are not set).
+3. **Database (fix "Connection refused"):** The app must reach Railway’s MySQL with the **correct host and port** (not `127.0.0.1`). Recommended:
+   - In the **backend service** → Variables → **New Variable** → **Add Variable Reference** → choose **MySQL** → **MYSQL_URL**, and name it **DATABASE_URL**. Redeploy.
+   - In deploy logs you should see `DATABASE_URL set: yes`. If you still get "Connection refused", **remove** the variables **DB_HOST**, **DB_PORT**, **DB_DATABASE**, **DB_USERNAME**, **DB_PASSWORD** from the backend service (so Laravel uses only `DATABASE_URL`) and redeploy again.
+   - Alternatively, reference or copy **DB_HOST**, **DB_PORT**, **DB_DATABASE**, **DB_USERNAME**, **DB_PASSWORD** from the MySQL service (DB_HOST must be the MySQL hostname Railway shows, not `127.0.0.1`).
 4. Set **APP_KEY** and **JWT_SECRET** as needed.
 
 ---

@@ -30,6 +30,7 @@ return [
 
         'mysql' => [
             'driver' => 'mysql',
+            // Prefer full URL (Railway: reference MySQL service's MYSQL_URL as DATABASE_URL)
             'url' => env('DATABASE_URL', env('MYSQL_URL')),
             'host' => env('DB_HOST', env('MYSQLHOST', env('MYSQL_HOST', '127.0.0.1'))),
             'port' => env('DB_PORT', env('MYSQLPORT', env('MYSQL_PORT', '3306'))),
