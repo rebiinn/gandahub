@@ -25,12 +25,20 @@ Route::prefix('v1')->group(function () {
 
     // Health check (DB connectivity from web process)
     Route::get('/health', function () {
+        $debug = [
+            'db_host_set' => !empty(env('DB_HOST')),
+            'database_url_set' => !empty(env('DATABASE_URL')),
+        ];
         try {
             \Illuminate\Support\Facades\DB::connection()->getPdo();
             \Illuminate\Support\Facades\DB::connection()->getDatabaseName();
             return response()->json(['ok' => true, 'database' => 'connected']);
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'debug' => $debug,
+            ], 500);
         }
     });
 
