@@ -20,6 +20,7 @@ return [
 
     'allowed_origins_patterns' => [
         '#^https://.*\.vercel\.app$#',
+        '#^http://localhost(:\d+)?$#',
     ],
 
     'allowed_headers' => ['*'],
