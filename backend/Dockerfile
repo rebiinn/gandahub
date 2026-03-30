@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Build context may be repo root (monorepo) or backend/ — copy backend into /app
-COPY backend /app
+# Railway deploy uses backend directory as build context.
+COPY . /app
 WORKDIR /app
 
 # Remove any existing composer.lock to avoid version conflicts
