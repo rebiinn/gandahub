@@ -14,28 +14,8 @@ const Login = () => {
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(null);
 
   const from = location.state?.from?.pathname || '/';
-
-  useEffect(() => {
-    let cancelled = false;
-    authAPI
-      .getAuthProviders()
-      .then((res) => {
-        if (!cancelled) {
-          setGoogleOAuthEnabled(Boolean(res.data?.data?.google));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setGoogleOAuthEnabled(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Handle return from Google OAuth (?token=... or ?error=...)
   useEffect(() => {
@@ -46,7 +26,9 @@ const Login = () => {
       if (error === 'google_denied') {
         toast.error('Google sign-in was cancelled or failed.');
       } else if (error === 'google_not_configured') {
-        toast.error('Google sign-in is not configured. Please use email and password.');
+        toast.error(
+          'Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the backend (Railway). Or use email and password.'
+        );
       } else if (error === 'account_deactivated') {
         toast.error('Your account has been deactivated.');
       } else {
@@ -148,7 +130,7 @@ const Login = () => {
               label="Email Address"
               type="email"
               icon={FaEnvelope}
-              placeholder="cyven@example.com"
+              placeholder="Enter your email address"
               error={errors.email?.message}
               {...register('email', {
                 required: 'Email is required',
@@ -204,25 +186,21 @@ const Login = () => {
             </Button>
           </form>
 
-          {googleOAuthEnabled === true && (
-            <>
-              <div className="my-8 flex items-center">
-                <div className="flex-grow border-t border-gray-200"></div>
-                <span className="px-4 text-sm text-gray-500">or</span>
-                <div className="flex-grow border-t border-gray-200"></div>
-              </div>
+          <div className="my-8 flex items-center">
+            <div className="flex-grow border-t border-gray-200"></div>
+            <span className="px-4 text-sm text-gray-500">or</span>
+            <div className="flex-grow border-t border-gray-200"></div>
+          </div>
 
-              <div className="space-y-3">
-                <a
-                  href={authAPI.getGoogleAuthURL()}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 no-underline"
-                >
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-                  <span>Continue with Google</span>
-                </a>
-              </div>
-            </>
-          )}
+          <div className="space-y-3">
+            <a
+              href={authAPI.getGoogleAuthURL()}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 no-underline"
+            >
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+              <span>Continue with Google</span>
+            </a>
+          </div>
 
           {/* Sign Up Link */}
           <p className="mt-8 text-center text-gray-600">

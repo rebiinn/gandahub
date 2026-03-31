@@ -72,8 +72,6 @@ export const authAPI = {
   changePassword: (data) => api.put('/change-password', data),
   forgotPassword: (email) => api.post('/forgot-password', { email }),
   resetPassword: (data) => api.post('/reset-password', data),
-  /** Whether backend has Google OAuth configured. */
-  getAuthProviders: () => api.get('/auth/providers'),
   /** URL to start Google sign-in (open in same window). */
   getGoogleAuthURL: () => `${apiBaseURL()}/auth/google`,
 };
