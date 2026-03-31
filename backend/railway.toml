@@ -1,0 +1,4 @@
+# Used when this service’s Root Directory in Railway is set to `backend`.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"

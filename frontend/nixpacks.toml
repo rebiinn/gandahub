@@ -1,0 +1,6 @@
+# Railway / Nixpacks: Vite is a devDependency — install it for the build step.
+[variables]
+NPM_CONFIG_PRODUCTION = "false"
+
+[phases.build]
+cmds = ["npm run build"]
