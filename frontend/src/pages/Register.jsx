@@ -86,7 +86,7 @@ const Register = () => {
               label="Email Address"
               type="email"
               icon={FaEnvelope}
-              placeholder="cyven@example.com"
+              placeholder="Enter your email address"
               error={errors.email?.message}
               {...register('email', {
                 required: 'Email is required',

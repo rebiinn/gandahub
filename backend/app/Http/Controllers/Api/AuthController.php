@@ -245,20 +245,35 @@ class AuthController extends Controller
     }
 
     /**
+     * Whether Google OAuth can run (both credentials set on the server).
+     */
+    private function isGoogleOAuthConfigured(): bool
+    {
+        $id = config('services.google.client_id');
+        $secret = config('services.google.client_secret');
+
+        return is_string($id) && $id !== ''
+            && is_string($secret) && $secret !== '';
+    }
+
+    /**
+     * Public: which social providers are available (no secrets exposed).
+     */
+    public function authProviders()
+    {
+        return $this->successResponse([
+            'google' => $this->isGoogleOAuthConfigured(),
+        ]);
+    }
+
+    /**
      * Redirect to Google OAuth.
      */
     public function redirectToGoogle()
     {
-        $clientId = config('services.google.client_id');
-        if (empty($clientId)) {
+        if (!$this->isGoogleOAuthConfigured()) {
             return redirect($this->getFrontendUrl() . '/login?error=google_not_configured');
         }
-
-        $redirectUrl = config('services.google.redirect');
-        if (empty($redirectUrl)) {
-            $redirectUrl = url('/api/v1/auth/google/callback');
-        }
-        config(['services.google.redirect' => $redirectUrl]);
 
         return Socialite::driver('google')->stateless()->redirect();
     }

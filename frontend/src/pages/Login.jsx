@@ -14,8 +14,28 @@ const Login = () => {
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(null);
 
   const from = location.state?.from?.pathname || '/';
+
+  useEffect(() => {
+    let cancelled = false;
+    authAPI
+      .getAuthProviders()
+      .then((res) => {
+        if (!cancelled) {
+          setGoogleOAuthEnabled(Boolean(res.data?.data?.google));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGoogleOAuthEnabled(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Handle return from Google OAuth (?token=... or ?error=...)
   useEffect(() => {
@@ -184,23 +204,25 @@ const Login = () => {
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="my-8 flex items-center">
-            <div className="flex-grow border-t border-gray-200"></div>
-            <span className="px-4 text-sm text-gray-500">or</span>
-            <div className="flex-grow border-t border-gray-200"></div>
-          </div>
+          {googleOAuthEnabled === true && (
+            <>
+              <div className="my-8 flex items-center">
+                <div className="flex-grow border-t border-gray-200"></div>
+                <span className="px-4 text-sm text-gray-500">or</span>
+                <div className="flex-grow border-t border-gray-200"></div>
+              </div>
 
-          {/* Social Login */}
-          <div className="space-y-3">
-            <a
-              href={authAPI.getGoogleAuthURL()}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 no-underline"
-            >
-              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
-              <span>Continue with Google</span>
-            </a>
-          </div>
+              <div className="space-y-3">
+                <a
+                  href={authAPI.getGoogleAuthURL()}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 no-underline"
+                >
+                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+                  <span>Continue with Google</span>
+                </a>
+              </div>
+            </>
+          )}
 
           {/* Sign Up Link */}
           <p className="mt-8 text-center text-gray-600">
