@@ -1,6 +1,5 @@
 # Used when this service’s Root Directory in Railway is set to `frontend`.
+# Docker avoids Nixpacks “build plan” failures for this Vite + monorepo setup.
 [build]
-builder = "NIXPACKS"
-
-[deploy]
-startCommand = "npm run start:prod"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
