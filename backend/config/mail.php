@@ -7,8 +7,23 @@ return [
     'mailers' => [
         'smtp' => [
             'transport' => 'smtp',
-            'host' => env('MAIL_HOST', 'smtp.mailgun.org'),
-            'port' => env('MAIL_PORT', 587),
+            'host' => (function () {
+                $raw = (string) env('MAIL_HOST', 'smtp.mailgun.org');
+                // Some deployments accidentally set MAIL_HOST like "smtp-relay.brevo.com:587".
+                // Strip the ":port" portion so PHP's SMTP host is valid.
+                if (preg_match('/^(.+):(\d+)$/', $raw, $m)) {
+                    return $m[1];
+                }
+                return $raw;
+            })(),
+            'port' => (function () {
+                $rawHost = (string) env('MAIL_HOST', 'smtp.mailgun.org');
+                $rawPort = (int) env('MAIL_PORT', 587);
+                if (preg_match('/^(.+):(\d+)$/', $rawHost, $m)) {
+                    return (int) $m[2];
+                }
+                return $rawPort;
+            })(),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
