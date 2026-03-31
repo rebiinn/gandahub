@@ -307,6 +307,7 @@ class AuthController extends Controller
                     'google_id' => $googleUser->getId(),
                     'password' => Hash::make(uniqid('google_', true)),
                     'role' => 'customer',
+                    'is_active' => true,
                 ]);
             }
         }

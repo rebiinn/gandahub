@@ -30,7 +30,9 @@ const Login = () => {
           'Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the backend (Railway). Or use email and password.'
         );
       } else if (error === 'account_deactivated') {
-        toast.error('Your account has been deactivated.');
+        toast.error(
+          'This account is disabled in the system. An admin must set the user to active again (Admin → Users), or use another Google account.'
+        );
       } else {
         toast.error('Something went wrong. Please try again.');
       }
