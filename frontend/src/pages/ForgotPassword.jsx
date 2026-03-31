@@ -21,9 +21,12 @@ const ForgotPassword = () => {
     try {
       setLoading(true);
       setSent(false);
-      await authAPI.forgotPassword(data.email);
+      const res = await authAPI.forgotPassword(data.email);
       setSent(true);
-      toast.success('If that email is registered, we\'ve sent you a reset link. Check your inbox.');
+      toast.success(
+        res.data?.message ||
+          'If that email is registered, you will receive a link shortly. Check your inbox and spam.'
+      );
     } catch (err) {
       const msg = err.response?.data?.message || 'Something went wrong. Please try again.';
       toast.error(msg);

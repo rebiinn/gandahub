@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Socialite\Facades\Socialite;
@@ -195,14 +196,36 @@ class AuthController extends Controller
             return $this->errorResponse('Validation failed', 422, $validator->errors());
         }
 
-        $status = Password::sendResetLink($request->only('email'));
+        try {
+            $status = Password::sendResetLink($request->only('email'));
+        } catch (\Throwable $e) {
+            Log::error('forgot_password_mail_failed', [
+                'message' => $e->getMessage(),
+                'email' => $request->input('email'),
+            ]);
 
-        if ($status === Password::RESET_LINK_SENT) {
-            return $this->successResponse(null, 'If that email is registered, we\'ve sent you a password reset link. Check your inbox.');
+            return $this->errorResponse(
+                'We could not send the reset email. Ask your administrator to configure outgoing mail on the server (MAIL_MAILER, MAIL_HOST, etc.), for example SMTP or Resend.',
+                503
+            );
         }
 
-        // Don't reveal whether the email exists (same message for invalid or throttled)
-        return $this->successResponse(null, 'If that email is registered, we\'ve sent you a password reset link. Check your inbox.');
+        if ($status === Password::RESET_THROTTLED) {
+            return $this->errorResponse('Please wait a minute before requesting another reset link.', 429);
+        }
+
+        if ($status === Password::RESET_LINK_SENT) {
+            return $this->successResponse(
+                null,
+                'Check your email — we sent you a link to reset your password. If you do not see it, look in spam or promotions.'
+            );
+        }
+
+        // Invalid user or other: do not confirm whether the email exists
+        return $this->successResponse(
+            null,
+            'If that email is registered, you will receive a reset link shortly. Check your inbox and spam folder.'
+        );
     }
 
     /**
