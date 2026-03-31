@@ -69,6 +69,18 @@ export function toAbsoluteImageUrl(url, fallback = PLACEHOLDER_PRODUCT) {
   if (!trimmed) return fallback;
   if (/^https?:\/\//i.test(trimmed)) return upgradeHttpForApiHost(trimmed);
   if (/^blob:/i.test(trimmed)) return trimmed;
+  // Catalog images from DatabaseSeeder live under Vite `public/images/` (deployed with the SPA), not Laravel storage.
+  const imagesPublicPath = trimmed.startsWith('/images/')
+    ? trimmed
+    : trimmed.startsWith('images/')
+      ? `/${trimmed}`
+      : null;
+  if (imagesPublicPath) {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return `${window.location.origin}${imagesPublicPath}`;
+    }
+    return imagesPublicPath;
+  }
   const pathForServe = trimmed.startsWith('/storage/') ? trimmed.slice(9) : trimmed;
   const pathNorm = pathForServe.startsWith('/') ? pathForServe.slice(1) : pathForServe;
   const base = getApiBaseURL();
