@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { FaEye, FaUserPlus, FaMoneyBillWave } from 'react-icons/fa';
-import { deliveriesAPI, paymentsAPI } from '../../services/api';
+import { deliveriesAPI, logisticsAPI, paymentsAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import Loading from '../../components/common/Loading';
 import Pagination from '../../components/common/Pagination';
 import Badge from '../../components/common/Badge';
+import LogisticsHandoffPanel from '../../components/logistics/LogisticsHandoffPanel';
 
 const Deliveries = () => {
   const [deliveries, setDeliveries] = useState([]);
@@ -19,11 +21,31 @@ const Deliveries = () => {
   const [assigningDeliveryId, setAssigningDeliveryId] = useState(null);
   const [selectedRider, setSelectedRider] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [logisticsCatalog, setLogisticsCatalog] = useState(null);
 
   useEffect(() => {
     fetchDeliveries();
     fetchRiders();
   }, []);
+
+  useEffect(() => {
+    if (!showModal) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await logisticsAPI.getCatalog();
+        if (!cancelled) setLogisticsCatalog(res.data.data || null);
+      } catch {
+        if (!cancelled) {
+          setLogisticsCatalog(null);
+          toast.error('Failed to load logistics catalog');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showModal]);
 
   const fetchDeliveries = async (page = 1, statusOverride) => {
     try {
@@ -152,8 +174,14 @@ const Deliveries = () => {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-800">Deliveries</h1>
+        <Link
+          to="/admin/logistics"
+          className="text-sm font-medium text-primary-600 hover:text-primary-700"
+        >
+          Open logistics dashboard →
+        </Link>
       </div>
 
       {/* Filters */}
@@ -325,6 +353,15 @@ const Deliveries = () => {
               <p className="text-gray-600">{selectedDelivery.order?.shipping_address}</p>
               <p className="text-gray-600">{selectedDelivery.order?.shipping_city}, {selectedDelivery.order?.shipping_zip_code}</p>
             </div>
+
+            <LogisticsHandoffPanel
+              catalog={logisticsCatalog}
+              delivery={selectedDelivery}
+              onSuccess={(updated) => {
+                setSelectedDelivery(updated);
+                fetchDeliveries(meta.current_page);
+              }}
+            />
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>

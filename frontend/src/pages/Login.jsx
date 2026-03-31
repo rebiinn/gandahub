@@ -9,7 +9,7 @@ import Button from '../components/common/Button';
 import { authAPI } from '../services/api';
 
 const Login = () => {
-  const { login, isAuthenticated, isAdmin, isRider } = useAuth();
+  const { login, isAuthenticated, isAdmin, isRider, isSupplier } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
@@ -44,7 +44,7 @@ const Login = () => {
           localStorage.setItem('user', JSON.stringify(userData));
           window.history.replaceState({}, '', location.pathname);
           toast.success('Welcome back!');
-          const target = userData.role === 'admin' ? '/admin' : userData.role === 'rider' ? '/rider' : from;
+          const target = userData.role === 'admin' ? '/admin' : userData.role === 'rider' ? '/rider' : userData.role === 'supplier' ? '/supplier' : from;
           window.location.href = target; // full navigation so AuthContext picks up token
         } catch (err) {
           toast.error('Session invalid. Please sign in again.');
@@ -68,6 +68,8 @@ const Login = () => {
       navigate('/admin');
     } else if (isRider) {
       navigate('/rider');
+    } else if (isSupplier) {
+      navigate('/supplier');
     } else {
       navigate(from);
     }
@@ -84,11 +86,17 @@ const Login = () => {
         navigate('/admin');
       } else if (user.role === 'rider') {
         navigate('/rider');
+      } else if (user.role === 'supplier') {
+        navigate('/supplier');
       } else {
         navigate(from);
       }
     } catch (error) {
-      const message = error.response?.data?.message || 'Login failed. Please try again.';
+      const msg = error.response?.data?.message;
+      const isNetwork = !error.response && error.request;
+      const message = msg || (isNetwork
+        ? 'Cannot reach server. Is the backend running? Set VITE_API_URL in .env to your backend URL and restart.'
+        : 'Login failed. Please try again.');
       toast.error(message);
     } finally {
       setLoading(false);
@@ -196,7 +204,7 @@ const Login = () => {
 
           {/* Sign Up Link */}
           <p className="mt-8 text-center text-gray-600">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">
               Sign up
             </Link>

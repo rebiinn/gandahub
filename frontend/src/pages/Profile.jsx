@@ -1,15 +1,65 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { FaUser, FaLock } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import Input from '../components/common/Input';
 import Button from '../components/common/Button';
+import { storesAPI, uploadAPI } from '../services/api';
 
 const Profile = () => {
   const { user, updateProfile, changePassword } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
+  const [store, setStore] = useState(null);
+  const [savingStoreLogo, setSavingStoreLogo] = useState(false);
+
+  const isSupplier = user?.role === 'supplier';
+
+  useEffect(() => {
+    if (!isSupplier) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await storesAPI.getAll();
+        const storeData = res.data.data;
+        const row = Array.isArray(storeData) ? storeData[0] : storeData;
+        if (!cancelled) setStore(row || null);
+      } catch (e) {
+        console.error('Failed to load store:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSupplier]);
+
+  const handleStoreLogoChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !store?.id) {
+      if (!store?.id) toast.error('Store not found. Contact support.');
+      event.target.value = '';
+      return;
+    }
+    try {
+      setSavingStoreLogo(true);
+      const uploadRes = await uploadAPI.supplierUploadImage(file, 'stores');
+      const uploadData = uploadRes.data?.data || uploadRes.data;
+      const logoPath = uploadData?.url || uploadData?.path;
+      if (!logoPath) {
+        throw new Error('Upload failed');
+      }
+      const updated = await storesAPI.update(store.id, { logo: logoPath });
+      setStore(updated.data.data || updated.data);
+      toast.success('Store logo updated');
+    } catch (error) {
+      console.error('Failed to update store logo:', error);
+      toast.error(error.response?.data?.message || 'Failed to update store logo');
+    } finally {
+      setSavingStoreLogo(false);
+      event.target.value = '';
+    }
+  };
 
   const {
     register: registerProfile,
@@ -102,13 +152,24 @@ const Profile = () => {
             {/* Profile Tab */}
             {activeTab === 'profile' && (
               <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-6">
-                <div className="flex items-center gap-6 mb-8">
-                  <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center">
-                    <span className="text-3xl font-bold text-primary-600">
-                      {user?.first_name?.[0]}{user?.last_name?.[0]}
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-start gap-6 mb-8">
+                  <div className="flex-shrink-0">
+                    {isSupplier && store?.logo ? (
+                      <img
+                        src={store.logo}
+                        alt={store.name || 'Store logo'}
+                        className="w-24 h-24 rounded-full object-cover border border-gray-200 bg-white"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center">
+                        <span className="text-3xl font-bold text-primary-600">
+                          {user?.first_name?.[0]}
+                          {user?.last_name?.[0]}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <h2 className="text-xl font-semibold text-gray-800">
                       {user?.first_name} {user?.last_name}
                     </h2>
@@ -116,6 +177,31 @@ const Profile = () => {
                     <span className="inline-block mt-2 px-3 py-1 bg-primary-100 text-primary-700 text-sm rounded-full capitalize">
                       {user?.role}
                     </span>
+                    {isSupplier && store?.name && (
+                      <p className="text-gray-700 text-sm mt-2 font-medium">{store.name}</p>
+                    )}
+                    {isSupplier && store?.id && (
+                      <div className="mt-3">
+                        <label className="inline-flex items-center text-sm text-primary-600 cursor-pointer">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleStoreLogoChange}
+                            disabled={savingStoreLogo}
+                          />
+                          <span className="underline">
+                            {store?.logo ? 'Change store logo' : 'Upload store logo'}
+                          </span>
+                          {savingStoreLogo && (
+                            <span className="ml-2 text-gray-500">Saving...</span>
+                          )}
+                        </label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Shown on your storefront and marketplace listings.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

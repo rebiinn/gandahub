@@ -161,6 +161,7 @@ const Deliveries = () => {
                     <FaTruck className="text-blue-500" />
                     <span className="font-medium text-gray-800">{delivery.tracking_number}</span>
                     {getStatusBadge(delivery.status)}
+                    <span className="text-sm text-gray-500">{formatDate(delivery.created_at)}</span>
                   </div>
                   
                   <div className="text-sm text-gray-600 space-y-1">

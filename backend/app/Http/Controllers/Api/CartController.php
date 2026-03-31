@@ -12,6 +12,19 @@ use Illuminate\Support\Facades\Validator;
 class CartController extends Controller
 {
     /**
+     * Stable key for matching cart lines: same product + same options merge, different options stay separate.
+     */
+    protected function cartOptionsKey(?array $options): string
+    {
+        if ($options === null || $options === []) {
+            return '';
+        }
+        ksort($options);
+
+        return json_encode($options, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * Get or create user's cart.
      */
     protected function getCart()
@@ -65,9 +78,22 @@ class CartController extends Controller
         }
 
         $cart = $this->getCart();
+        $cart->load('items');
 
-        // Check if item already exists in cart
-        $cartItem = $cart->items()->where('product_id', $product->id)->first();
+        $requestOptions = $request->options;
+        $optionsKey = $this->cartOptionsKey(is_array($requestOptions) ? $requestOptions : null);
+
+        $cartItem = null;
+        foreach ($cart->items as $item) {
+            if ((int) $item->product_id !== (int) $product->id) {
+                continue;
+            }
+            $itemKey = $this->cartOptionsKey(is_array($item->options) ? $item->options : null);
+            if ($itemKey === $optionsKey) {
+                $cartItem = $item;
+                break;
+            }
+        }
 
         if ($cartItem) {
             $newQuantity = $cartItem->quantity + $request->quantity;
@@ -86,7 +112,7 @@ class CartController extends Controller
                 'quantity' => $request->quantity,
                 'unit_price' => $product->effective_price,
                 'total_price' => $product->effective_price * $request->quantity,
-                'options' => $request->options,
+                'options' => is_array($requestOptions) ? $requestOptions : null,
             ]);
         }
 
@@ -191,11 +217,13 @@ class CartController extends Controller
 
         $cart = $this->getCart();
 
-        // Mock coupon validation (in production, implement proper coupon system)
+        // Coupon codes: code => discount (decimal, e.g. 0.20 = 20% off subtotal)
         $validCoupons = [
             'WELCOME10' => 0.10,
             'SAVE20' => 0.20,
             'GANDA15' => 0.15,
+            'BEAUTY20' => 0.20,
+            'GIFT2026' => 0.15,
         ];
 
         $code = strtoupper($request->coupon_code);

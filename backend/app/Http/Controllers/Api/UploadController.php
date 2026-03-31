@@ -17,8 +17,23 @@ class UploadController extends Controller
      */
     public function uploadImage(Request $request)
     {
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         $validator = Validator::make($request->all(), [
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // Max 5MB
+            'image' => [
+                'required',
+                'file',
+                'max:5120', // 5MB
+                function ($attribute, $value, $fail) use ($allowedExtensions) {
+                    if (!$value->isValid()) {
+                        $fail('The file upload failed.');
+                        return;
+                    }
+                    $ext = strtolower($value->getClientOriginalExtension());
+                    if (!in_array($ext, $allowedExtensions)) {
+                        $fail('The image must be JPEG, PNG, GIF, or WebP.');
+                    }
+                },
+            ],
             'folder' => 'nullable|string|max:50',
         ]);
 
@@ -30,26 +45,39 @@ class UploadController extends Controller
             $file = $request->file('image');
             $folder = $request->input('folder', 'products');
 
-            // Always try Cloudinary first in production
             $cloudName = config('cloudinary.cloud_name') ?: getenv('CLOUDINARY_CLOUD_NAME');
             $apiKey = config('cloudinary.api_key') ?: getenv('CLOUDINARY_API_KEY');
             $apiSecret = config('cloudinary.api_secret') ?: getenv('CLOUDINARY_API_SECRET');
 
+            // Try Cloudinary only when all three credentials are set
             if (!empty($cloudName) && !empty($apiKey) && !empty($apiSecret)) {
-                $result = $this->uploadToCloudinary($file, $folder);
-                return $this->successResponse($result, 'Image uploaded successfully');
+                try {
+                    $result = $this->uploadToCloudinary($file, $folder);
+                    return $this->successResponse($result, 'Image uploaded successfully');
+                } catch (\Exception $e) {
+                    \Log::warning('Cloudinary upload failed, falling back to local storage', ['error' => $e->getMessage()]);
+                    // Fall through to local storage
+                }
             }
-            
-            // Fallback to local storage (for development)
-            $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-            $path = $file->storeAs($folder, $filename, 'public');
+
+            // Local storage without using Storage/Flysystem (avoids finfo MIME detection when fileinfo ext is missing)
+            $filename = Str::uuid() . '.' . strtolower($file->getClientOriginalExtension());
+            $dir = storage_path('app/public/' . $folder);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+            $fullPath = $dir . '/' . $filename;
+            if (!move_uploaded_file($file->getRealPath(), $fullPath)) {
+                throw new \Exception('Failed to save file to disk.');
+            }
+            $path = $folder . '/' . $filename;
             $url = url('storage/' . $path);
 
             return $this->successResponse([
                 'url' => $url,
                 'path' => $path,
                 'filename' => $filename,
-                'note' => 'Using local storage. Cloudinary not configured.',
+                'note' => 'Using local storage.',
             ], 'Image uploaded successfully');
         } catch (\Exception $e) {
             return $this->errorResponse('Upload failed: ' . $e->getMessage(), 500);
@@ -114,9 +142,23 @@ class UploadController extends Controller
      */
     public function uploadMultiple(Request $request)
     {
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         $validator = Validator::make($request->all(), [
             'images' => 'required|array|max:10',
-            'images.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'images.*' => [
+                'file',
+                'max:5120',
+                function ($attribute, $value, $fail) use ($allowedExtensions) {
+                    if (!$value->isValid()) {
+                        $fail('The file upload failed.');
+                        return;
+                    }
+                    $ext = strtolower($value->getClientOriginalExtension());
+                    if (!in_array($ext, $allowedExtensions)) {
+                        $fail('Each image must be JPEG, PNG, GIF, or WebP.');
+                    }
+                },
+            ],
             'folder' => 'nullable|string|max:50',
         ]);
 
@@ -126,12 +168,19 @@ class UploadController extends Controller
 
         try {
             $folder = $request->input('folder', 'products');
+            $dir = storage_path('app/public/' . $folder);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
             $uploadedFiles = [];
 
             foreach ($request->file('images') as $file) {
-                $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-                $path = $file->storeAs($folder, $filename, 'public');
-                
+                $filename = Str::uuid() . '.' . strtolower($file->getClientOriginalExtension());
+                $fullPath = $dir . '/' . $filename;
+                if (!move_uploaded_file($file->getRealPath(), $fullPath)) {
+                    throw new \Exception('Failed to save file: ' . $file->getClientOriginalName());
+                }
+                $path = $folder . '/' . $filename;
                 $uploadedFiles[] = [
                     'url' => url('storage/' . $path),
                     'path' => $path,

@@ -2,16 +2,22 @@ import { Link } from 'react-router-dom';
 import { FaMinus, FaPlus, FaTrash, FaShoppingCart, FaTag } from 'react-icons/fa';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { toAbsoluteImageUrl } from '../utils/imageUrl';
+import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
+import { formatShadeOptionLabel } from '../utils/productShades';
 import Button from '../components/common/Button';
 import Loading from '../components/common/Loading';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const Cart = () => {
-  const { cart, items, loading, updateQuantity, removeFromCart, clearCart, applyCoupon, removeCoupon } = useCart();
+  const { cart, items, loading, updateQuantity, removeFromCart, clearCart, applyCoupon, removeCoupon, fetchCart } = useCart();
   const { isAuthenticated } = useAuth();
   const [couponCode, setCouponCode] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
+
+  // Refetch cart when visiting this page so we never show stale items (e.g. after order was placed and backend cleared cart)
+  useEffect(() => {
+    if (isAuthenticated) fetchCart();
+  }, [isAuthenticated, fetchCart]);
 
   const formatPrice = (amount) => {
     return new Intl.NumberFormat('en-PH', {
@@ -53,7 +59,7 @@ const Cart = () => {
         <div className="text-center">
           <FaShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">Your cart is empty</h2>
-          <p className="text-gray-600 mb-6">Looks like you haven't added anything yet</p>
+          <p className="text-gray-600 mb-6">Looks like you haven&apos;t added anything yet</p>
           <Link to="/products">
             <Button variant="primary">Start Shopping</Button>
           </Link>
@@ -77,9 +83,15 @@ const Cart = () => {
                     {/* Product Image */}
                     <Link to={`/products/${item.product?.slug}`} className="flex-shrink-0">
                       <img
-                        src={toAbsoluteImageUrl(item.product?.thumbnail, '/placeholder-product.jpg')}
+                        src={toAbsoluteImageUrl(item.product?.thumbnail)}
                         alt={item.product?.name}
                         className="w-24 h-24 object-cover rounded-lg"
+                        onError={(e) => {
+                          if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
+                            e.target.dataset.failed = '1';
+                            e.target.src = PLACEHOLDER_PRODUCT;
+                          }
+                        }}
                       />
                     </Link>
 
@@ -94,6 +106,11 @@ const Cart = () => {
                       <p className="text-sm text-gray-500 mt-1">
                         {item.product?.category?.name}
                       </p>
+                      {formatShadeOptionLabel(item.options) && (
+                        <p className="text-sm text-primary-600 mt-1 font-medium">
+                          {formatShadeOptionLabel(item.options)}
+                        </p>
+                      )}
                       <p className="text-primary-600 font-semibold mt-2">
                         {formatPrice(item.unit_price)}
                       </p>

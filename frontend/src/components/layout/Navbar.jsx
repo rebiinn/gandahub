@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   FaSearch, 
@@ -9,17 +9,21 @@ import {
   FaHeart,
   FaSignOutAlt,
   FaUserCircle,
-  FaBox
+  FaBox,
+  FaStore,
+  FaEnvelope,
+  FaBell,
 } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
+import { notificationsAPI } from '../../services/api';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { user, isAuthenticated, logout, isAdmin, isRider } = useAuth();
+  const { user, isAuthenticated, logout, isAdmin, isRider, isSupplier, isCustomer } = useAuth();
   const { itemsCount } = useCart();
   const { itemsCount: wishlistCount } = useWishlist();
   const navigate = useNavigate();
@@ -45,11 +49,70 @@ const Navbar = () => {
     { name: 'Sale', path: '/products?on_sale=true' },
   ];
 
+  const promoBanners = [
+    'Free Shipping on Orders Over ₱1,500 | Use Code: GANDA15 for 15% Off',
+    'New Collection 2026 — Shop Now & Get 20% Off with CODE: BEAUTY20',
+    'Flash Sale: Free Gift on Orders Over ₱2,000 | Use Code: GIFT2026',
+    'Subscribe to Our Newsletter — Get 10% Off Your First Order',
+  ];
+
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [customerNotifs, setCustomerNotifs] = useState([]);
+  const [notifUnread, setNotifUnread] = useState(0);
+
+  const fetchCustomerNotifications = async () => {
+    if (!isCustomer) return;
+    try {
+      const [listRes, countRes] = await Promise.all([
+        notificationsAPI.getAll({ per_page: 8 }),
+        notificationsAPI.getUnreadCount(),
+      ]);
+      setCustomerNotifs(listRes.data?.data ?? []);
+      setNotifUnread(countRes.data?.data?.count ?? 0);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!isCustomer) return;
+    fetchCustomerNotifications();
+    const t = setInterval(fetchCustomerNotifications, 60000);
+    return () => clearInterval(t);
+  }, [isCustomer]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBannerIndex((i) => (i + 1) % promoBanners.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-40">
-      {/* Top Bar */}
-      <div className="bg-primary-600 text-white text-center py-2 text-sm">
-        Free Shipping on Orders Over ₱1,500 | Use Code: GANDA15 for 15% Off
+    <header className="bg-white shadow-sm sticky top-0 z-[1100]">
+      {/* Top Bar - auto-rotating promos */}
+      <div className="bg-primary-600 text-white text-center py-2 text-sm overflow-hidden relative px-10">
+        <div
+          key={bannerIndex}
+          className="animate-fade-in"
+          style={{ animationDuration: '0.4s' }}
+        >
+          {promoBanners[bannerIndex]}
+        </div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1.5">
+          {promoBanners.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Go to promo ${i + 1}`}
+              onClick={() => setBannerIndex(i)}
+              className={`w-1.5 h-1.5 rounded-full transition-opacity ${
+                i === bannerIndex ? 'bg-white opacity-100' : 'bg-white/50 hover:bg-white/80'
+              }`}
+            />
+          ))}
+        </div>
       </div>
 
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -93,27 +156,75 @@ const Navbar = () => {
 
           {/* Right Icons */}
           <div className="flex items-center space-x-4">
-            {/* Wishlist - customer only */}
-            {isAuthenticated && (
-              <Link to="/wishlist" className="p-2 text-gray-600 hover:text-primary-600 transition-colors relative hidden sm:block">
-                <FaHeart className="w-5 h-5" />
-                {wishlistCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {wishlistCount > 9 ? '9+' : wishlistCount}
-                  </span>
+            {isCustomer && (
+              <div className="relative hidden sm:block">
+                <button
+                  type="button"
+                  onClick={() => setNotifOpen((o) => !o)}
+                  className="p-2 text-gray-600 hover:text-primary-600 transition-colors relative"
+                  aria-label="Notifications"
+                >
+                  <FaBell className="w-5 h-5" />
+                  {notifUnread > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[1.125rem] h-5 px-1 bg-primary-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                      {notifUnread > 9 ? '9+' : notifUnread}
+                    </span>
+                  )}
+                </button>
+                {notifOpen && (
+                  <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-white rounded-lg shadow-lg border border-gray-100 z-[1200]">
+                    <div className="px-3 py-2 border-b text-sm font-medium text-gray-700">Updates</div>
+                    {customerNotifs.length === 0 ? (
+                      <p className="px-3 py-6 text-sm text-gray-500 text-center">No notifications yet</p>
+                    ) : (
+                      <ul className="py-1">
+                        {customerNotifs.map((n) => (
+                          <li key={n.id}>
+                            <button
+                              type="button"
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${n.read_at ? 'text-gray-600' : 'text-gray-900 font-medium'}`}
+                              onClick={async () => {
+                                setNotifOpen(false);
+                                try {
+                                  if (!n.read_at) await notificationsAPI.markAsRead(n.id);
+                                  fetchCustomerNotifications();
+                                } catch {
+                                  /* ignore */
+                                }
+                                if (n.data?.link) navigate(n.data.link);
+                              }}
+                            >
+                              {n.data?.message || 'Notification'}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
-              </Link>
+              </div>
             )}
-
-            {/* Cart */}
-            <Link to="/cart" className="p-2 text-gray-600 hover:text-primary-600 transition-colors relative">
-              <FaShoppingCart className="w-5 h-5" />
-              {itemsCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {itemsCount > 9 ? '9+' : itemsCount}
-                </span>
-              )}
-            </Link>
+            {/* Wishlist & Cart - hide for suppliers */}
+            {isAuthenticated && !isSupplier && (
+              <>
+                <Link to="/wishlist" className="p-2 text-gray-600 hover:text-primary-600 transition-colors relative hidden sm:block">
+                  <FaHeart className="w-5 h-5" />
+                  {wishlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {wishlistCount > 9 ? '9+' : wishlistCount}
+                    </span>
+                  )}
+                </Link>
+                <Link to="/cart" className="p-2 text-gray-600 hover:text-primary-600 transition-colors relative">
+                  <FaShoppingCart className="w-5 h-5" />
+                  {itemsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary-500 text-white text-xs rounded-full flex items-center justifyCenter">
+                      {itemsCount > 9 ? '9+' : itemsCount}
+                    </span>
+                  )}
+                </Link>
+              </>
+            )}
 
             {/* User Menu */}
             {isAuthenticated ? (
@@ -151,6 +262,16 @@ const Navbar = () => {
                         Rider Dashboard
                       </Link>
                     )}
+                    {isSupplier && (
+                      <Link
+                        to="/supplier"
+                        className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsProfileOpen(false)}
+                      >
+                        <FaStore className="w-4 h-4" />
+                        My Store
+                      </Link>
+                    )}
                     <Link
                       to="/profile"
                       className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
@@ -159,13 +280,24 @@ const Navbar = () => {
                       <FaUserCircle className="w-4 h-4" />
                       My Profile
                     </Link>
+                    {/* My Orders - hide for suppliers */}
+                    {!isSupplier && (
+                      <Link
+                        to="/orders"
+                        className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsProfileOpen(false)}
+                      >
+                        <FaBox className="w-4 h-4" />
+                        My Orders
+                      </Link>
+                    )}
                     <Link
-                      to="/orders"
+                      to="/messages"
                       className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
                       onClick={() => setIsProfileOpen(false)}
                     >
-                      <FaBox className="w-4 h-4" />
-                      My Orders
+                      <FaEnvelope className="w-4 h-4" />
+                      Messages
                     </Link>
                     <hr className="my-2" />
                     <button

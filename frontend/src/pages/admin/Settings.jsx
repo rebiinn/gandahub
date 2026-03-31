@@ -7,7 +7,7 @@ import Input from '../../components/common/Input';
 import Loading from '../../components/common/Loading';
 
 const Settings = () => {
-  const [settings, setSettings] = useState([]);
+  const [, setSettings] = useState([]);
   const [systemInfo, setSystemInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

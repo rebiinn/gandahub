@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FaFilter, FaTimes, FaSearch } from 'react-icons/fa';
-import { productsAPI, categoriesAPI } from '../services/api';
+import { productsAPI, categoriesAPI, storesAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import ProductCard from '../components/common/ProductCard';
 import Loading from '../components/common/Loading';
 import Pagination from '../components/common/Pagination';
 import Button from '../components/common/Button';
 
 const Products = () => {
+  const { user } = useAuth();
+  const isSupplier = user?.role === 'supplier';
   const [searchParams, setSearchParams] = useSearchParams();
+  const [supplierStore, setSupplierStore] = useState(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
@@ -33,12 +37,49 @@ const Products = () => {
     in_stock: searchParams.get('in_stock') === 'true',
     sort_by: searchParams.get('sort_by') || 'created_at',
     sort_order: searchParams.get('sort_order') || 'desc',
+    // Optional filter when coming from a store link
+    store_id: searchParams.get('store_id') || '',
   });
 
   useEffect(() => {
     fetchCategories();
-    fetchBrands();
   }, []);
+
+  useEffect(() => {
+    if (isSupplier) return;
+    fetchBrands();
+  }, [isSupplier]);
+
+  useEffect(() => {
+    if (!isSupplier) {
+      setSupplierStore(null);
+      return;
+    }
+    let cancelled = false;
+    storesAPI
+      .getAll()
+      .then((res) => {
+        const d = res.data.data;
+        const row = Array.isArray(d) ? d[0] : d;
+        if (!cancelled) setSupplierStore(row || null);
+      })
+      .catch(() => {
+        if (!cancelled) setSupplierStore(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSupplier]);
+
+  useEffect(() => {
+    if (!isSupplier) return;
+    setFilters((f) => (f.brand ? { ...f, brand: '' } : f));
+    if (searchParams.get('brand')) {
+      const p = new URLSearchParams(searchParams);
+      p.delete('brand');
+      setSearchParams(p, { replace: true });
+    }
+  }, [isSupplier, searchParams, setSearchParams]);
 
   useEffect(() => {
     fetchProducts();
@@ -72,7 +113,17 @@ const Products = () => {
       setMeta(response.data.meta || { current_page: 1, last_page: 1, total: 0 });
     } catch (error) {
       console.error('Failed to fetch products:', error);
-      setFetchError(error.response?.data?.message || 'Could not load products. Check your connection.');
+      const msg = error.response?.data?.message;
+      const isTimeout = error.code === 'ECONNABORTED';
+      const isNetwork = !error.response && error.request;
+      setFetchError(
+        msg ||
+          (isTimeout
+            ? 'Request timed out — the API did not respond. Start the Laravel backend (e.g. php artisan serve on port 8000) so the Vite proxy can reach it.'
+            : isNetwork
+              ? 'Cannot reach the backend. Make sure the backend is running (e.g. php artisan serve on port 8000, or set VITE_API_URL in .env to your backend URL) and restart the dev server.'
+              : 'Could not load products. Check your connection.')
+      );
       setProducts([]);
       setMeta({ current_page: 1, last_page: 1, total: 0 });
     } finally {
@@ -85,7 +136,7 @@ const Products = () => {
     
     if (filters.search) params.set('search', filters.search);
     if (filters.category_id) params.set('category_id', filters.category_id);
-    if (filters.brand) params.set('brand', filters.brand);
+    if (filters.brand && !isSupplier) params.set('brand', filters.brand);
     if (filters.min_price) params.set('min_price', filters.min_price);
     if (filters.max_price) params.set('max_price', filters.max_price);
     if (filters.on_sale) params.set('on_sale', 'true');
@@ -93,6 +144,7 @@ const Products = () => {
     if (filters.in_stock) params.set('in_stock', 'true');
     if (filters.sort_by) params.set('sort_by', filters.sort_by);
     if (filters.sort_order) params.set('sort_order', filters.sort_order);
+    if (filters.store_id) params.set('store_id', filters.store_id);
     
     setSearchParams(params);
     setShowFilters(false);
@@ -139,16 +191,26 @@ const Products = () => {
     setSearchParams(params);
   };
 
+  const pageTitle = (() => {
+    if (isSupplier) {
+      const name = supplierStore?.name || 'My store';
+      if (filters.search) return `${name} · Search: "${filters.search}"`;
+      return name;
+    }
+    if (filters.search) return `Search: "${filters.search}"`;
+    return 'All Products';
+  })();
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <h1 className="text-3xl font-display font-bold text-gray-800">
-            {filters.search ? `Search: "${filters.search}"` : 'All Products'}
+            {pageTitle}
           </h1>
           <p className="text-gray-600 mt-2">
-            {meta.total} products found
+            {isSupplier ? `${meta.total} products in your catalog` : `${meta.total} products found`}
           </p>
         </div>
       </div>
@@ -198,7 +260,7 @@ const Products = () => {
                 </select>
               </div>
 
-              {/* Brand */}
+              {!isSupplier && (
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Brand</label>
                 <select
@@ -212,6 +274,7 @@ const Products = () => {
                   ))}
                 </select>
               </div>
+              )}
 
               {/* Price Range */}
               <div className="mb-6">

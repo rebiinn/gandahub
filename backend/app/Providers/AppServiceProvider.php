@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -24,6 +25,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         $this->ensureDatabaseUrlForRailway();
+
+        // Password reset link should point to the frontend SPA
+        ResetPassword::createUrlUsing(function ($notifiable, $token) {
+            $email = urlencode($notifiable->getEmailForPasswordReset());
+            return rtrim(config('app.frontend_url'), '/') . '/reset-password?token=' . $token . '&email=' . $email;
+        });
     }
 
     /**

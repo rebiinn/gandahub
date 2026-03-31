@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Delivery;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Report;
+use App\Models\Review;
+use App\Models\StockRequest;
+use App\Models\Store;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -326,6 +330,147 @@ class ReportController extends Controller
             ],
             'low_stock_products' => Product::whereColumn('stock_quantity', '<=', 'low_stock_threshold')
                 ->count(),
+        ]);
+    }
+
+    /**
+     * Dashboard statistics for the authenticated supplier (scoped to their store).
+     */
+    public function supplierDashboard()
+    {
+        $user = auth()->user();
+        if (!$user || !$user->isSupplier()) {
+            return $this->errorResponse('Unauthorized', 403);
+        }
+
+        $store = Store::where('user_id', $user->id)->first();
+        if (!$store) {
+            return $this->successResponse([
+                'today' => [
+                    'orders' => 0,
+                    'revenue' => 0,
+                    'pending_stock_requests' => 0,
+                ],
+                'this_month' => [
+                    'orders' => 0,
+                    'revenue' => 0,
+                ],
+                'totals' => [
+                    'products' => 0,
+                    'customers' => 0,
+                    'orders' => 0,
+                    'revenue' => 0,
+                ],
+                'pending' => [
+                    'orders' => 0,
+                    'stock_requests' => 0,
+                    'reviews' => 0,
+                ],
+                'low_stock_products' => 0,
+            ]);
+        }
+
+        $storeId = $store->id;
+        $today = now()->startOfDay();
+        $thisMonth = now()->startOfMonth();
+
+        $scopeSupplierOrders = function ($q) use ($storeId) {
+            $q->whereHas('items.product', function ($p) use ($storeId) {
+                $p->where('store_id', $storeId);
+            });
+        };
+
+        $itemRevenueForOrders = function ($orderConstraint) use ($storeId) {
+            return OrderItem::query()
+                ->whereHas('product', function ($q) use ($storeId) {
+                    $q->where('store_id', $storeId);
+                })
+                ->whereHas('order', $orderConstraint);
+        };
+
+        $todayRevenue = (clone $itemRevenueForOrders(function ($q) use ($today) {
+            $q->where('status', Order::STATUS_DELIVERED)
+                ->whereDate('created_at', $today);
+        }))->sum('total_price');
+
+        $monthRevenue = (clone $itemRevenueForOrders(function ($q) use ($thisMonth) {
+            $q->where('status', Order::STATUS_DELIVERED)
+                ->where('created_at', '>=', $thisMonth);
+        }))->sum('total_price');
+
+        $totalRevenue = OrderItem::query()
+            ->whereHas('product', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
+            ->whereHas('order', function ($q) {
+                $q->where('status', Order::STATUS_DELIVERED);
+            })
+            ->sum('total_price');
+
+        $ordersToday = Order::query()
+            ->whereDate('created_at', $today)
+            ->where($scopeSupplierOrders)
+            ->count();
+
+        $ordersThisMonth = Order::query()
+            ->where('created_at', '>=', $thisMonth)
+            ->where($scopeSupplierOrders)
+            ->count();
+
+        $ordersTotal = Order::query()
+            ->where($scopeSupplierOrders)
+            ->count();
+
+        $customerCount = (int) DB::table('orders')
+            ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+            ->join('products', 'order_items.product_id', '=', 'products.id')
+            ->where('products.store_id', $storeId)
+            ->whereNull('orders.deleted_at')
+            ->whereNull('products.deleted_at')
+            ->selectRaw('COUNT(DISTINCT orders.user_id) as aggregate')
+            ->value('aggregate');
+
+        $productCount = Product::where('store_id', $storeId)->count();
+
+        $pendingStockRequests = StockRequest::where('store_id', $storeId)
+            ->where('status', StockRequest::STATUS_PENDING)
+            ->count();
+
+        $pendingReviews = Review::query()
+            ->where('is_approved', false)
+            ->whereHas('product', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
+            ->count();
+
+        $lowStock = Product::where('store_id', $storeId)
+            ->whereColumn('stock_quantity', '<=', 'low_stock_threshold')
+            ->count();
+
+        return $this->successResponse([
+            'today' => [
+                'orders' => $ordersToday,
+                'revenue' => $todayRevenue,
+                'pending_stock_requests' => $pendingStockRequests,
+            ],
+            'this_month' => [
+                'orders' => $ordersThisMonth,
+                'revenue' => $monthRevenue,
+            ],
+            'totals' => [
+                'products' => $productCount,
+                'customers' => $customerCount,
+                'orders' => $ordersTotal,
+                'revenue' => $totalRevenue,
+            ],
+            'pending' => [
+                'orders' => Order::where('status', Order::STATUS_PENDING)
+                    ->where($scopeSupplierOrders)
+                    ->count(),
+                'stock_requests' => $pendingStockRequests,
+                'reviews' => $pendingReviews,
+            ],
+            'low_stock_products' => $lowStock,
         ]);
     }
 }

@@ -1,32 +1,51 @@
-/**
- * Get the API origin (base URL without /api/v1) for building absolute image URLs.
- * Product thumbnails from the API may be relative paths (e.g. /storage/products/xyz.jpg).
- * Browsers resolve relative URLs against the frontend origin (e.g. Vercel), so we must
- * resolve them against the backend origin so images load.
- */
-function getApiOrigin() {
-  const base =
+/** Fallback image for products with no thumbnail or when image fails to load. */
+export const PLACEHOLDER_PRODUCT = '/placeholder-product.svg';
+
+const getApiBaseURL = () => {
+  const raw =
     (typeof window !== 'undefined' && (window.__API_BASE_URL__ || window.__VITE_API_URL__)) ||
     import.meta.env.VITE_API_URL ||
     'http://localhost:8000/api/v1';
-  return String(base).replace(/\/$/, '').replace(/\/api\/v1\/?$/, '');
+  return String(raw).replace(/\/$/, '');
+};
+
+/**
+ * Get the API origin (base URL without /api/v1) for building absolute image URLs.
+ */
+export function getApiOrigin() {
+  return getApiBaseURL().replace(/\/api\/v1\/?$/, '');
+}
+
+/**
+ * If thumbnail is a full URL to our storage, return the path part (e.g. /storage/products/xxx.jpg).
+ * Otherwise return as-is. Use this before sending to API so the DB stores a short path.
+ */
+export function thumbnailToPath(thumbnail) {
+  if (!thumbnail || typeof thumbnail !== 'string') return thumbnail;
+  const trimmed = thumbnail.trim();
+  const origin = getApiOrigin();
+  if (trimmed.startsWith(origin + '/storage/')) {
+    return trimmed.slice(origin.length); // "/storage/products/xxx.jpg"
+  }
+  if (trimmed.startsWith(origin) && trimmed.includes('/storage/')) {
+    const i = trimmed.indexOf('/storage/');
+    return trimmed.slice(i);
+  }
+  return trimmed;
 }
 
 /**
  * Convert a possibly-relative image URL from the API into an absolute URL.
- * - If url is falsy, returns fallback or empty string.
- * - If url already starts with http:// or https://, returns as-is.
- * - Otherwise prepends the API origin so the image loads from the backend.
- * @param {string} url - URL from API (e.g. thumbnail, image path)
- * @param {string} [fallback=''] - Fallback when url is empty
- * @returns {string}
+ * Uses the API /storage/serve endpoint so images always load from the same app.
  */
-export function toAbsoluteImageUrl(url, fallback = '') {
+export function toAbsoluteImageUrl(url, fallback = PLACEHOLDER_PRODUCT) {
   if (!url || typeof url !== 'string') return fallback;
   const trimmed = url.trim();
   if (!trimmed) return fallback;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  const origin = getApiOrigin();
-  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  return `${origin}${path}`;
+  if (/^blob:/i.test(trimmed)) return trimmed;
+  const pathForServe = trimmed.startsWith('/storage/') ? trimmed.slice(9) : trimmed;
+  const pathNorm = pathForServe.startsWith('/') ? pathForServe.slice(1) : pathForServe;
+  const base = getApiBaseURL();
+  return base + '/storage/serve?path=' + encodeURIComponent(pathNorm);
 }

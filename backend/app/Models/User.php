@@ -105,6 +105,22 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
+     * Check if user is supplier.
+     */
+    public function isSupplier(): bool
+    {
+        return $this->role === 'supplier';
+    }
+
+    /**
+     * Get user's saved addresses (home, work, etc.).
+     */
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(UserAddress::class);
+    }
+
+    /**
      * Get user's cart.
      */
     public function cart(): HasOne
@@ -142,5 +158,13 @@ class User extends Authenticatable implements JWTSubject
     public function reports(): HasMany
     {
         return $this->hasMany(Report::class, 'generated_by');
+    }
+
+    /**
+     * Get the store owned by this user (suppliers only).
+     */
+    public function store(): HasOne
+    {
+        return $this->hasOne(Store::class);
     }
 }

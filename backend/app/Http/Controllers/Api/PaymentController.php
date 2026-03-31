@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Http\Request;
@@ -119,9 +120,15 @@ class PaymentController extends Controller
 
         if ($success) {
             $payment->markAsCompleted($transactionId);
-            
+
             // Update order status
             $order->updateStatus(Order::STATUS_CONFIRMED);
+
+            // Clear cart now that payment is complete (cart was kept when order was created for non-COD)
+            $userCart = Cart::where('user_id', $user->id)->first();
+            if ($userCart) {
+                $userCart->clear();
+            }
 
             return $this->successResponse([
                 'payment' => $payment->fresh(),

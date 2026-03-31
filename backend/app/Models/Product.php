@@ -18,6 +18,7 @@ class Product extends Model
      */
     protected $fillable = [
         'category_id',
+        'store_id',
         'name',
         'slug',
         'sku',
@@ -25,7 +26,10 @@ class Product extends Model
         'short_description',
         'price',
         'sale_price',
+        'supply_price',
         'stock_quantity',
+        'inventory_stock',
+        'supplier_stock_quantity',
         'low_stock_threshold',
         'brand',
         'weight',
@@ -45,7 +49,10 @@ class Product extends Model
     protected $casts = [
         'price' => 'decimal:2',
         'sale_price' => 'decimal:2',
+        'supply_price' => 'decimal:2',
         'stock_quantity' => 'integer',
+        'inventory_stock' => 'integer',
+        'supplier_stock_quantity' => 'integer',
         'low_stock_threshold' => 'integer',
         'images' => 'array',
         'attributes' => 'array',
@@ -78,6 +85,14 @@ class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Get the store (supplier) this product belongs to.
+     */
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 
     /**

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FaEye, FaSearch, FaFilter } from 'react-icons/fa';
+import { FaEye, FaSearch, FaFilter, FaTimes } from 'react-icons/fa';
 import { ordersAPI } from '../../services/api';
+import { formatShadeOptionLabel } from '../../utils/productShades';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
@@ -59,6 +60,20 @@ const Orders = () => {
       }
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to update status';
+      toast.error(message);
+    }
+  };
+
+  const cancelOrder = async (orderId, e) => {
+    e?.stopPropagation();
+    if (!window.confirm('Cancel this unpaid order? Stock will be restored.')) return;
+    try {
+      await ordersAPI.updateStatus(orderId, { status: 'cancelled' });
+      toast.success('Order cancelled');
+      fetchOrders(meta.current_page);
+      if (selectedOrder?.id === orderId) setShowModal(false);
+    } catch (error) {
+      const message = error.response?.data?.message || 'Failed to cancel order';
       toast.error(message);
     }
   };
@@ -169,13 +184,23 @@ const Orders = () => {
                     <td className="px-6 py-4">
                       {getStatusBadge(order.status)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 flex items-center gap-1">
                       <button
                         onClick={() => viewOrder(order.id)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                        title="View details"
                       >
                         <FaEye />
                       </button>
+                      {order.status === 'pending' && (
+                        <button
+                          onClick={(e) => cancelOrder(order.id, e)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Cancel (unpaid)"
+                        >
+                          <FaTimes />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -245,6 +270,9 @@ const Orders = () => {
                   <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-800">{item.product_name}</p>
+                      {formatShadeOptionLabel(item.options) && (
+                        <p className="text-sm text-primary-600 font-medium">{formatShadeOptionLabel(item.options)}</p>
+                      )}
                       <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                     </div>
                     <p className="font-medium">{formatPrice(item.total_price)}</p>

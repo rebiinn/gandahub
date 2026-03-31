@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { FaStar, FaShoppingCart, FaHeart } from 'react-icons/fa';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
-import { toAbsoluteImageUrl } from '../../utils/imageUrl';
+import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../../utils/imageUrl';
 import Button from './Button';
 
 const ProductCard = ({ product }) => {
@@ -45,9 +45,15 @@ const ProductCard = ({ product }) => {
         {/* Image Container */}
         <div className="relative aspect-square overflow-hidden bg-gray-100">
           <img
-            src={toAbsoluteImageUrl(thumbnail, '/placeholder-product.jpg')}
+            src={toAbsoluteImageUrl(thumbnail)}
             alt={name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={(e) => {
+              if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
+                e.target.dataset.failed = '1';
+                e.target.src = PLACEHOLDER_PRODUCT;
+              }
+            }}
           />
           
           {/* Badges */}

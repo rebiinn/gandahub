@@ -1,8 +1,34 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaFacebook, FaInstagram, FaTwitter, FaTiktok, FaEnvelope, FaPhone, FaMapMarkerAlt } from 'react-icons/fa';
+import { toast } from 'react-toastify';
+import { newsletterAPI } from '../../services/api';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleNewsletterSubmit = async (e) => {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) {
+      toast.error('Please enter your email address.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const response = await newsletterAPI.subscribe(trimmed);
+      const message = response?.data?.message || 'Thanks for subscribing!';
+      toast.success(message);
+      setEmail('');
+    } catch (err) {
+      const message = err.response?.data?.message || 'Something went wrong. Please try again.';
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <footer className="bg-gray-900 text-gray-300">
@@ -18,17 +44,22 @@ const Footer = () => {
                 Get exclusive deals, beauty tips, and new arrivals straight to your inbox!
               </p>
             </div>
-            <form className="flex w-full md:w-auto">
+            <form onSubmit={handleNewsletterSubmit} className="flex w-full md:w-auto">
               <input
                 type="email"
                 placeholder="Enter your email"
-                className="px-4 py-3 rounded-l-lg w-full md:w-64 focus:outline-none"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={submitting}
+                className="px-4 py-3 rounded-l-lg w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-white/30 text-gray-900 disabled:opacity-70"
+                aria-label="Email for newsletter"
               />
               <button
                 type="submit"
-                className="px-6 py-3 bg-gray-900 text-white rounded-r-lg hover:bg-gray-800 transition-colors"
+                disabled={submitting}
+                className="px-6 py-3 bg-gray-900 text-white rounded-r-lg hover:bg-gray-800 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Subscribe
+                {submitting ? '...' : 'Subscribe'}
               </button>
             </form>
           </div>

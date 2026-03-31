@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FaArrowRight, FaStar, FaTruck, FaLock, FaUndo } from 'react-icons/fa';
-import { productsAPI, categoriesAPI } from '../services/api';
+import { toast } from 'react-toastify';
+import { productsAPI, categoriesAPI, newsletterAPI } from '../services/api';
 import ProductCard from '../components/common/ProductCard';
 import Loading from '../components/common/Loading';
 import Button from '../components/common/Button';
@@ -12,6 +13,8 @@ const Home = () => {
   const [saleProducts, setSaleProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
 
   useEffect(() => {
     const FETCH_TIMEOUT_MS = 12000; // 12s so we never stick on loading
@@ -186,7 +189,7 @@ const Home = () => {
             Up to 50% Off Sale
           </h2>
           <p className="text-lg text-white/90 mb-8 max-w-2xl mx-auto">
-            Don't miss out on amazing deals! Shop our sale collection and save big on premium beauty products.
+            Don&apos;t miss out on amazing deals! Shop our sale collection and save big on premium beauty products.
           </p>
           <Link to="/products?on_sale=true">
             <Button variant="secondary" size="lg" className="bg-white text-primary-600 hover:bg-gray-100">
@@ -220,6 +223,29 @@ const Home = () => {
         </section>
       )}
 
+      {/* On Sale */}
+      {saleProducts.length > 0 && (
+        <section className="py-16 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-10">
+              <div>
+                <h2 className="section-title">On Sale</h2>
+                <p className="text-gray-600">Limited time deals</p>
+              </div>
+              <Link to="/products?on_sale=true" className="text-primary-600 hover:text-primary-700 font-medium flex items-center gap-2">
+                View All
+                <FaArrowRight />
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {saleProducts.slice(0, 4).map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Newsletter CTA */}
       <section className="py-16 bg-cosmetic-champagne">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -229,13 +255,36 @@ const Home = () => {
           <p className="text-gray-600 mb-8">
             Subscribe to our newsletter and get 15% off your first order, plus exclusive access to new products and beauty tips!
           </p>
-          <form className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto">
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const trimmed = newsletterEmail.trim();
+              if (!trimmed) {
+                toast.error('Please enter your email address.');
+                return;
+              }
+              setNewsletterSubmitting(true);
+              try {
+                const response = await newsletterAPI.subscribe(trimmed);
+                toast.success(response?.data?.message || 'Thanks for subscribing!');
+                setNewsletterEmail('');
+              } catch (err) {
+                toast.error(err.response?.data?.message || 'Something went wrong. Please try again.');
+              } finally {
+                setNewsletterSubmitting(false);
+              }
+            }}
+            className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto"
+          >
             <input
               type="email"
               placeholder="Enter your email"
-              className="flex-grow px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-primary-500"
+              value={newsletterEmail}
+              onChange={(e) => setNewsletterEmail(e.target.value)}
+              disabled={newsletterSubmitting}
+              className="flex-grow px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-primary-500 disabled:opacity-70"
             />
-            <Button variant="primary">
+            <Button type="submit" variant="primary" loading={newsletterSubmitting}>
               Subscribe
             </Button>
           </form>

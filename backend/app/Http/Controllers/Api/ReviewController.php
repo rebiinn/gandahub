@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Review;
+use App\Models\Store;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Validator;
 
 class ReviewController extends Controller
@@ -219,9 +221,9 @@ class ReviewController extends Controller
             return $this->errorResponse('Review not found', 404);
         }
 
-        $review->reject();
+        $review->delete();
 
-        return $this->successResponse($review, 'Review rejected');
+        return $this->successResponse(null, 'Review removed');
     }
 
     /**
@@ -252,5 +254,70 @@ class ReviewController extends Controller
             ->paginate($perPage);
 
         return $this->paginatedResponse($reviews);
+    }
+
+    /**
+     * Pending reviews for a supplier's store only.
+     */
+    public function supplierPending(Request $request)
+    {
+        $user = auth()->user();
+        $store = Store::where('user_id', $user->id)->first();
+        if (!$store) {
+            return $this->paginatedResponse(new LengthAwarePaginator([], 0, 10));
+        }
+
+        $perPage = min($request->get('per_page', 10), 50);
+        $reviews = Review::with(['user', 'product'])
+            ->where('is_approved', false)
+            ->whereHas('product', function ($q) use ($store) {
+                $q->where('store_id', $store->id);
+            })
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        return $this->paginatedResponse($reviews);
+    }
+
+    /**
+     * Approve a review (supplier: product must belong to their store).
+     */
+    public function supplierApprove($id)
+    {
+        $user = auth()->user();
+        $store = Store::where('user_id', $user->id)->first();
+        if (!$store) {
+            return $this->errorResponse('Store not found', 404);
+        }
+
+        $review = Review::with('product')->find($id);
+        if (!$review || !$review->product || (int) $review->product->store_id !== (int) $store->id) {
+            return $this->errorResponse('Review not found', 404);
+        }
+
+        $review->approve();
+
+        return $this->successResponse($review->fresh(['user', 'product']), 'Review approved');
+    }
+
+    /**
+     * Reject/remove a pending review (supplier: product must belong to their store).
+     */
+    public function supplierReject($id)
+    {
+        $user = auth()->user();
+        $store = Store::where('user_id', $user->id)->first();
+        if (!$store) {
+            return $this->errorResponse('Store not found', 404);
+        }
+
+        $review = Review::with('product')->find($id);
+        if (!$review || !$review->product || (int) $review->product->store_id !== (int) $store->id) {
+            return $this->errorResponse('Review not found', 404);
+        }
+
+        $review->delete();
+
+        return $this->successResponse(null, 'Review removed');
     }
 }

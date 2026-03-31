@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Socialite\Facades\Socialite;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -171,6 +172,62 @@ class AuthController extends Controller
         $user->update(['password' => Hash::make($request->password)]);
 
         return $this->successResponse(null, 'Password changed successfully');
+    }
+
+    /**
+     * Send password reset link to the given email (forgot password).
+     */
+    public function forgotPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', 422, $validator->errors());
+        }
+
+        $status = Password::sendResetLink($request->only('email'));
+
+        if ($status === Password::RESET_LINK_SENT) {
+            return $this->successResponse(null, 'If that email is registered, we\'ve sent you a password reset link. Check your inbox.');
+        }
+
+        // Don't reveal whether the email exists (same message for invalid or throttled)
+        return $this->successResponse(null, 'If that email is registered, we\'ve sent you a password reset link. Check your inbox.');
+    }
+
+    /**
+     * Reset password using the token from the email link.
+     */
+    public function resetPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'token' => 'required|string',
+            'email' => 'required|email',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', 422, $validator->errors());
+        }
+
+        $status = Password::reset(
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function ($user, $password) {
+                $user->forceFill(['password' => Hash::make($password)])->save();
+            }
+        );
+
+        if ($status === Password::PASSWORD_RESET) {
+            return $this->successResponse(null, 'Your password has been reset. You can now sign in.');
+        }
+
+        if ($status === Password::INVALID_TOKEN) {
+            return $this->errorResponse('This reset link is invalid or has expired. Please request a new one.', 400);
+        }
+
+        return $this->errorResponse('Unable to reset password. Please try again or request a new link.', 400);
     }
 
     /**

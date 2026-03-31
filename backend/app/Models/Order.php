@@ -128,6 +128,14 @@ class Order extends Model
     }
 
     /**
+     * Get rider rating for this order (one per order).
+     */
+    public function riderRating(): HasOne
+    {
+        return $this->hasOne(RiderRating::class);
+    }
+
+    /**
      * Get shipping full name.
      */
     public function getShippingFullNameAttribute(): string
@@ -170,6 +178,22 @@ class Order extends Model
 
         if ($status === self::STATUS_DELIVERED) {
             $this->update(['delivered_at' => now()]);
+            $this->completeCodPaymentIfApplicable();
+        }
+    }
+
+    /**
+     * When order is delivered, mark Cash on Delivery payment as completed.
+     */
+    public function completeCodPaymentIfApplicable(): void
+    {
+        $payment = $this->payment;
+        if (!$payment || $payment->status === \App\Models\Payment::STATUS_COMPLETED) {
+            return;
+        }
+        $method = strtolower((string) $payment->payment_method);
+        if ($method === 'cod' || $method === 'cash_on_delivery') {
+            $payment->markAsCompleted();
         }
     }
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { cartAPI } from '../services/api';
 import { useAuth } from './AuthContext';
 import { toast } from 'react-toastify';
@@ -35,9 +35,9 @@ export const CartProvider = ({ children }) => {
     }
   }, [isAuthenticated]);
 
-  const fetchCart = async () => {
+  const fetchCart = useCallback(async () => {
     if (!isAuthenticated) return;
-    
+
     try {
       setLoading(true);
       const response = await cartAPI.get();
@@ -50,7 +50,7 @@ export const CartProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated]);
 
   const addToCart = async (productId, quantity = 1, options = null) => {
     if (!isAuthenticated) {
@@ -111,8 +111,14 @@ export const CartProvider = ({ children }) => {
       setItemsCount(data.items_count || 0);
       toast.success('Item removed from cart');
     } catch (error) {
-      const message = error.response?.data?.message || 'Failed to remove item';
-      toast.error(message);
+      if (error.response?.status === 404) {
+        // Item already gone (e.g. cart was cleared when order was placed); sync from backend
+        await fetchCart();
+        toast.info('Cart updated');
+      } else {
+        const message = error.response?.data?.message || 'Failed to remove item';
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -148,6 +154,7 @@ export const CartProvider = ({ children }) => {
       const response = await cartAPI.applyCoupon(code);
       const data = response.data.data;
       setCart(data.cart);
+      setItems(data.cart?.items ?? []);
       toast.success('Coupon applied!');
       return true;
     } catch (error) {
@@ -165,7 +172,9 @@ export const CartProvider = ({ children }) => {
     try {
       setLoading(true);
       const response = await cartAPI.removeCoupon();
-      setCart(response.data.data);
+      const cart = response.data.data;
+      setCart(cart);
+      setItems(cart?.items ?? []);
       toast.success('Coupon removed');
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to remove coupon';

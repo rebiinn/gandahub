@@ -1,18 +1,44 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { FaArrowLeft, FaTruck, FaCheckCircle, FaTimesCircle, FaBox } from 'react-icons/fa';
-import { ordersAPI } from '../services/api';
-import { toAbsoluteImageUrl } from '../utils/imageUrl';
+import { FaArrowLeft, FaTruck, FaCheckCircle, FaBox, FaStar } from 'react-icons/fa';
+import { ordersAPI, reviewsAPI } from '../services/api';
+import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
+import { formatShadeOptionLabel } from '../utils/productShades';
 import Loading from '../components/common/Loading';
 import Badge from '../components/common/Badge';
 import Button from '../components/common/Button';
 import { toast } from 'react-toastify';
+
+const StarRating = ({ value, onChange, readonly = false, size = 'md' }) => {
+  const sizeClass = size === 'sm' ? 'w-4 h-4' : 'w-6 h-6';
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          disabled={readonly}
+          onClick={() => !readonly && onChange(star)}
+          className={`${sizeClass} ${value >= star ? 'text-amber-400' : 'text-gray-300'} hover:opacity-80 transition`}
+        >
+          <FaStar className={value >= star ? 'fill-current' : ''} />
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const OrderDetail = () => {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [riderRating, setRiderRating] = useState(0);
+  const [riderComment, setRiderComment] = useState('');
+  const [submittingRider, setSubmittingRider] = useState(false);
+  const [productRatings, setProductRatings] = useState({});
+  const [productComments, setProductComments] = useState({});
+  const [submittingProduct, setSubmittingProduct] = useState(null);
 
   useEffect(() => {
     fetchOrder();
@@ -43,6 +69,52 @@ const OrderDetail = () => {
       toast.error(message);
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleRateRider = async (e) => {
+    e.preventDefault();
+    if (!riderRating) {
+      toast.error('Please select a star rating');
+      return;
+    }
+    setSubmittingRider(true);
+    try {
+      await ordersAPI.rateRider(id, { rating: riderRating, comment: riderComment.trim() || null });
+      toast.success('Thank you for rating your rider!');
+      setRiderRating(0);
+      setRiderComment('');
+      fetchOrder();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit rating');
+    } finally {
+      setSubmittingRider(false);
+    }
+  };
+
+  const handleRateProduct = async (e, productId, productName) => {
+    e.preventDefault();
+    const rating = productRatings[productId];
+    if (!rating) {
+      toast.error('Please select a star rating for ' + productName);
+      return;
+    }
+    setSubmittingProduct(productId);
+    try {
+      await reviewsAPI.create({
+        product_id: productId,
+        order_id: parseInt(id, 10),
+        rating,
+        comment: (productComments[productId] || '').trim() || null,
+      });
+      toast.success('Review submitted. It may appear after approval.');
+      setProductRatings((prev) => ({ ...prev, [productId]: 0 }));
+      setProductComments((prev) => ({ ...prev, [productId]: '' }));
+      fetchOrder();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit review');
+    } finally {
+      setSubmittingProduct(null);
     }
   };
 
@@ -194,9 +266,15 @@ const OrderDetail = () => {
             {order.items?.map((item) => (
               <div key={item.id} className="py-4 flex gap-4">
                 <img
-                  src={toAbsoluteImageUrl(item.product?.thumbnail, '/placeholder-product.jpg')}
+                  src={toAbsoluteImageUrl(item.product?.thumbnail)}
                   alt={item.product_name}
                   className="w-20 h-20 object-cover rounded-lg"
+                  onError={(e) => {
+                    if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
+                      e.target.dataset.failed = '1';
+                      e.target.src = PLACEHOLDER_PRODUCT;
+                    }
+                  }}
                 />
                 <div className="flex-grow">
                   <p className="font-medium text-gray-800">{item.product_name}</p>
@@ -214,6 +292,109 @@ const OrderDetail = () => {
             ))}
           </div>
         </div>
+
+        {/* Rate your experience - only when delivered */}
+        {order.status === 'delivered' && (
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">Rate your experience</h2>
+
+            {/* Rate rider */}
+            {order.delivery?.rider && (
+              <div className="mb-6 pb-6 border-b border-gray-100">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Rate your rider</h3>
+                <p className="text-gray-600 text-sm mb-2">
+                  {order.delivery.rider.first_name} {order.delivery.rider.last_name}
+                </p>
+                {order.rider_rating ? (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <StarRating value={order.rider_rating.rating} readonly size="sm" />
+                    <span className="text-sm">You rated this rider</span>
+                    {order.rider_rating.comment && (
+                      <p className="text-sm text-gray-500 mt-1 w-full">{order.rider_rating.comment}</p>
+                    )}
+                  </div>
+                ) : (
+                  <form onSubmit={handleRateRider} className="space-y-2">
+                    <StarRating value={riderRating} onChange={setRiderRating} />
+                    <textarea
+                      placeholder="Optional: How was your delivery?"
+                      value={riderComment}
+                      onChange={(e) => setRiderComment(e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <Button type="submit" variant="primary" size="sm" loading={submittingRider} disabled={!riderRating}>
+                      Submit rider rating
+                    </Button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* Rate products */}
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Rate your products</h3>
+            <div className="space-y-4">
+              {order.items?.map((item) => {
+                const productId = item.product_id;
+                const productName = item.product_name || item.product?.name || 'Product';
+                const userReview = item.user_review;
+                return (
+                  <div key={item.id} className="flex flex-wrap gap-4 items-start p-4 bg-gray-50 rounded-lg">
+                    <img
+                      src={toAbsoluteImageUrl(item.product?.thumbnail)}
+                      alt=""
+                      className="w-14 h-14 object-cover rounded"
+                      onError={(e) => { if (e.target.src !== PLACEHOLDER_PRODUCT) e.target.src = PLACEHOLDER_PRODUCT; }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-800">{productName}</p>
+                      {formatShadeOptionLabel(item.options) && (
+                        <p className="text-xs text-primary-600 font-medium mt-0.5">
+                          {formatShadeOptionLabel(item.options)}
+                        </p>
+                      )}
+                      {userReview ? (
+                        <div className="mt-2">
+                          <StarRating value={userReview.rating} readonly size="sm" />
+                          {userReview.comment && (
+                            <p className="text-sm text-gray-600 mt-1">{userReview.comment}</p>
+                          )}
+                          {!userReview.is_approved && (
+                            <p className="text-xs text-amber-600 mt-1">Your review is pending approval</p>
+                          )}
+                        </div>
+                      ) : (
+                        <form onSubmit={(e) => handleRateProduct(e, productId, productName)} className="mt-2 space-y-2">
+                          <StarRating
+                            value={productRatings[productId] || 0}
+                            onChange={(v) => setProductRatings((prev) => ({ ...prev, [productId]: v }))}
+                            size="sm"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Optional: Add a comment"
+                            value={productComments[productId] || ''}
+                            onChange={(e) => setProductComments((prev) => ({ ...prev, [productId]: e.target.value }))}
+                            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                          />
+                          <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            loading={submittingProduct === productId}
+                            disabled={!(productRatings[productId] >= 1)}
+                          >
+                            Submit review
+                          </Button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Shipping Address */}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FaTruck, FaCheckCircle, FaClock, FaExclamationTriangle } from 'react-icons/fa';
+import { FaTruck, FaCheckCircle, FaClock } from 'react-icons/fa';
 import { deliveriesAPI } from '../../services/api';
 import Loading from '../../components/common/Loading';
 import Badge from '../../components/common/Badge';
@@ -77,7 +77,7 @@ const Dashboard = () => {
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-800">Rider Dashboard</h1>
-        <p className="text-gray-600">Welcome! Here's your delivery overview.</p>
+        <p className="text-gray-600">Welcome! Here&apos;s your delivery overview.</p>
       </div>
 
       {/* Stats Cards */}

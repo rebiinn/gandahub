@@ -128,6 +128,7 @@ const Users = () => {
       admin: 'danger',
       customer: 'primary',
       rider: 'info',
+      supplier: 'success',
     };
     return <Badge variant={variants[role] || 'default'}>{role}</Badge>;
   };
@@ -172,6 +173,7 @@ const Users = () => {
             <option value="admin">Admin</option>
             <option value="customer">Customer</option>
             <option value="rider">Rider</option>
+            <option value="supplier">Supplier</option>
           </select>
           <Button type="submit" variant="primary">
             Search
@@ -316,6 +318,7 @@ const Users = () => {
               <option value="customer">Customer</option>
               <option value="rider">Rider</option>
               <option value="admin">Admin</option>
+              <option value="supplier">Supplier</option>
             </select>
           </div>
 

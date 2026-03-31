@@ -4,35 +4,58 @@ A modern, full-stack e-commerce web application for cosmetics and beauty product
 
 > **📄 Project Proposal:** See [PROJECT_PROPOSAL.md](PROJECT_PROPOSAL.md) for the full functional and non-functional requirements document.
 
+## Requirements
+
+- **Backend:** PHP **8.1 or newer** (Laravel 10 and Composer require `^8.1`). If you see *"Composer detected issues in your platform"*, see [backend/PHP_SETUP.md](backend/PHP_SETUP.md) for Windows setup, upgrade PHP via [php.net](https://www.php.net/downloads), or use a version manager (e.g. [Laravel Herd](https://herd.laravel.com)).
+- **Frontend:** Node.js 18+ and npm.
+- **Database:** MySQL (or use Railway/cloud DB; see Production setup below).
+
+## Local development (quick start)
+
+1. **Backend:** From `backend/`, copy `.env.example` to `.env`, set `APP_KEY` (`php artisan key:generate`), database credentials, `JWT_SECRET`, and `FRONTEND_URL` (e.g. `http://localhost:5173`). Run migrations: `php artisan migrate` (and optional `php artisan db:seed`). Start the API: `php artisan serve` (default `http://127.0.0.1:8000`).
+2. **Frontend:** From `frontend/`, set `VITE_API_URL` in `.env` to your API base with version, e.g. `http://127.0.0.1:8000/api/v1`. Run `npm install` then `npm run dev`. Production builds run `write-config.js` so `public/config.json` gets `apiUrl` from `VITE_API_URL`; in dev, Vite reads the env variable directly.
+3. **Optional:** Configure `MAIL_*` in the backend `.env` if you use forgot-password / email flows. For **Continue with Google**, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and ensure the redirect URI matches `GOOGLE_REDIRECT_URI` in `.env`.
+
 ## Features
 
 ### Customer Features
-- Browse products by categories
+- Browse products by categories; **vendor storefronts** at `/stores/:slug`
 - Product search and filtering
-- Shopping cart management
-- Secure checkout process
-- Order tracking
-- User profile management
-- Product reviews
+- Shopping cart and wishlist
+- **Saved delivery addresses** (profile / checkout)
+- Secure checkout
+- **Forgot password** and **reset password** (email depends on `MAIL_*` configuration)
+- **Continue with Google** (OAuth; requires Google credentials on the backend)
+- Order history and **order tracking** (including delivery tracking)
+- User profile
+- Product reviews; **rate rider** after delivery
+- **In-app messages** with suppliers (conversations)
+- **Notifications** (e.g. stock / fulfillment updates)
+- **Newsletter** signup (footer / marketing)
 
 ### Admin Features
 - Dashboard with analytics
-- Product management (CRUD)
-- Category management
-- Inventory management with low stock alerts
-- Order management and status updates
-- Customer management
-- Payment management
-- Delivery management and rider assignment
-- Reports generation (Sales, Inventory, Revenue, etc.)
-- System settings configuration
-- Database backup support
+- **Store management** (create vendor stores; assign suppliers)
+- Product management (CRUD), categories, **inventory** and warehouse / supply fields
+- **Stock requests** to suppliers; **inventory receipts** (audit trail)
+- Order and payment management; delivery and rider assignment
+- Customer and user management (roles include **supplier**)
+- **Reviews** moderation (approve / reject)
+- **Newsletter subscribers** list
+- Reports (sales, inventory, revenue, etc.)
+- System settings and database backup support
+
+### Supplier Features (`/supplier` portal)
+- Dashboard scoped to the supplier’s store
+- **Products** and stock for their catalog
+- **Stock requests** from admin (fulfill / decline where applicable)
+- **Messages** with customers
+- **Reviews** pending approval for their products
 
 ### Rider Features
 - Delivery dashboard
-- View assigned deliveries
-- Update delivery status
-- Mark deliveries as complete
+- View assigned deliveries and update status / location
+- Mark deliveries complete
 
 
 
@@ -64,6 +87,8 @@ Without `VITE_API_URL` pointing to your Railway backend (e.g. `https://websystem
    - In deploy logs you should see `DATABASE_URL set: yes`. If you still get "Connection refused", **remove** the variables **DB_HOST**, **DB_PORT**, **DB_DATABASE**, **DB_USERNAME**, **DB_PASSWORD** from the backend service (so Laravel uses only `DATABASE_URL`) and redeploy again.
    - Alternatively, reference or copy **DB_HOST**, **DB_PORT**, **DB_DATABASE**, **DB_USERNAME**, **DB_PASSWORD** from the MySQL service (DB_HOST must be the MySQL hostname Railway shows, not `127.0.0.1`).
 4. Set **APP_KEY** and **JWT_SECRET** as needed.
+5. **Email (password reset):** For forgot-password links to work in production, configure real **MAIL_*** variables (or a transactional email provider). Local dev can use Mailpit or similar if `MAIL_HOST` points to a test inbox.
+6. **New deploys / schema changes:** After pulling code with new migrations, ensure the release runs `php artisan migrate --force`. The repo may include migration helpers under `backend/` (e.g. one-off scripts) for specific tables; prefer `php artisan migrate` when possible.
 
 ---
 

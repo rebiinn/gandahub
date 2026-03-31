@@ -104,6 +104,7 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = !!token && !!user;
   const isAdmin = user?.role === 'admin';
   const isRider = user?.role === 'rider';
+  const isSupplier = user?.role === 'supplier';
   const isCustomer = user?.role === 'customer';
 
   const value = {
@@ -113,6 +114,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated,
     isAdmin,
     isRider,
+    isSupplier,
     isCustomer,
     login,
     register,

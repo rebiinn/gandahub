@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { FaHeart, FaShoppingCart } from 'react-icons/fa';
 import { useWishlist } from '../context/WishlistContext';
 import { useCart } from '../context/CartContext';
-import { toAbsoluteImageUrl } from '../utils/imageUrl';
+import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
 import Button from '../components/common/Button';
 
 const Wishlist = () => {
@@ -54,9 +54,15 @@ const Wishlist = () => {
                 <Link to={`/products/${product.slug}`} className="block">
                   <div className="aspect-square overflow-hidden bg-gray-100 relative">
                     <img
-                      src={toAbsoluteImageUrl(product.thumbnail, '/placeholder-product.jpg')}
+                      src={toAbsoluteImageUrl(product.thumbnail)}
                       alt={product.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
+                          e.target.dataset.failed = '1';
+                          e.target.src = PLACEHOLDER_PRODUCT;
+                        }
+                      }}
                     />
                     {isOnSale && (
                       <span className="absolute top-3 left-3 badge badge-danger">Sale</span>

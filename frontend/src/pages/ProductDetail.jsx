@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { FaStar, FaMinus, FaPlus, FaShoppingCart, FaHeart, FaShare } from 'react-icons/fa';
+import { FaStar, FaMinus, FaPlus, FaShoppingCart, FaHeart, FaShare, FaChevronDown } from 'react-icons/fa';
 import { productsAPI, reviewsAPI } from '../services/api';
-import { toAbsoluteImageUrl } from '../utils/imageUrl';
+import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
+import { getProductShadesWithOriginal } from '../utils/productShades';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import Loading from '../components/common/Loading';
@@ -18,10 +19,35 @@ const ProductDetail = () => {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [selectedShadeIdx, setSelectedShadeIdx] = useState(0);
+  const [shadeMenuOpen, setShadeMenuOpen] = useState(false);
+  const shadeMenuRef = useRef(null);
 
   useEffect(() => {
     fetchProduct();
   }, [slug]);
+
+  useEffect(() => {
+    setSelectedShadeIdx(0);
+    setSelectedImage(0);
+    setQuantity(1);
+    setShadeMenuOpen(false);
+  }, [product?.id]);
+
+  useEffect(() => {
+    setSelectedImage(0);
+  }, [selectedShadeIdx]);
+
+  useEffect(() => {
+    if (!shadeMenuOpen) return;
+    const close = (e) => {
+      if (shadeMenuRef.current && !shadeMenuRef.current.contains(e.target)) {
+        setShadeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [shadeMenuOpen]);
 
   const fetchProduct = async () => {
     try {
@@ -49,7 +75,21 @@ const ProductDetail = () => {
   };
 
   const handleAddToCart = () => {
-    addToCart(product.id, quantity);
+    if (!product) return;
+    const shades = getProductShadesWithOriginal(product);
+    let options = null;
+    if (shades.length) {
+      const s = shades[selectedShadeIdx];
+      if (s) {
+        if (s.isOriginal) {
+          options = { shade: 'Original' };
+        } else {
+          options = { shade: s.name };
+          if (s.hex) options.shade_hex = s.hex;
+        }
+      }
+    }
+    addToCart(product.id, quantity, options);
   };
 
   if (loading) {
@@ -72,10 +112,67 @@ const ProductDetail = () => {
   const effectivePrice = product.sale_price || product.price;
   const isOnSale = product.sale_price && product.sale_price < product.price;
   const inStock = product.stock_quantity > 0;
+  const shades = getProductShadesWithOriginal(product);
+  const selectedShade = shades.length ? shades[selectedShadeIdx] : null;
+
   const rawImages = product.images?.length ? product.images : [product.thumbnail].filter(Boolean);
-  const images = rawImages.length
-    ? rawImages.map((img) => toAbsoluteImageUrl(img, '/placeholder-product.jpg'))
-    : ['/placeholder-product.jpg'];
+  let displayPaths = [...rawImages];
+  if (selectedShade?.image && !selectedShade.isOriginal) {
+    const sh = selectedShade.image;
+    displayPaths = [sh, ...displayPaths.filter((p) => p && p !== sh)];
+  }
+  const images = displayPaths.length
+    ? displayPaths.map((img) => toAbsoluteImageUrl(img))
+    : [PLACEHOLDER_PRODUCT];
+
+  const swatchFillStyle = (s) =>
+    s?.hex
+      ? { backgroundColor: s.hex }
+      : { background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 50%, #f9a8d4 100%)' };
+
+  const originalThumb = product.thumbnail || product.images?.[0];
+
+  const renderBarSwatch = (s, sizeClass = 'w-8 h-8') => {
+    if (!s) return null;
+    if (s.isOriginal && originalThumb) {
+      return (
+        <span className={`${sizeClass} rounded-full border border-gray-200 overflow-hidden shrink-0 bg-white`}>
+          <img
+            src={toAbsoluteImageUrl(originalThumb)}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              if (e.target.dataset.failed) return;
+              e.target.dataset.failed = '1';
+              e.target.src = PLACEHOLDER_PRODUCT;
+            }}
+          />
+        </span>
+      );
+    }
+    if (s.image) {
+      return (
+        <span className={`${sizeClass} rounded-full border border-gray-200 overflow-hidden shrink-0 bg-white`}>
+          <img
+            src={toAbsoluteImageUrl(s.image)}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              if (e.target.dataset.failed) return;
+              e.target.dataset.failed = '1';
+              e.target.src = PLACEHOLDER_PRODUCT;
+            }}
+          />
+        </span>
+      );
+    }
+    return (
+      <span
+        className={`${sizeClass} rounded-full border border-gray-300 shrink-0`}
+        style={swatchFillStyle(s)}
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -100,6 +197,12 @@ const ProductDetail = () => {
                   src={images[selectedImage]}
                   alt={product.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
+                      e.target.dataset.failed = '1';
+                      e.target.src = PLACEHOLDER_PRODUCT;
+                    }
+                  }}
                 />
               </div>
               {images.length > 1 && (
@@ -112,7 +215,17 @@ const ProductDetail = () => {
                         selectedImage === index ? 'border-primary-500' : 'border-transparent'
                       }`}
                     >
-                      <img src={toAbsoluteImageUrl(img)} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={toAbsoluteImageUrl(img)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
+                            e.target.dataset.failed = '1';
+                            e.target.src = PLACEHOLDER_PRODUCT;
+                          }
+                        }}
+                      />
                     </button>
                   ))}
                 </div>
@@ -172,7 +285,7 @@ const ProductDetail = () => {
                 </p>
               )}
 
-              {/* SKU & Brand */}
+              {/* SKU, Brand & Store */}
               <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
                 <div>
                   <span className="text-gray-500">SKU:</span>
@@ -184,7 +297,137 @@ const ProductDetail = () => {
                     <span className="ml-2 text-gray-800">{product.brand}</span>
                   </div>
                 )}
+                {product.store && (
+                  <div className="col-span-2">
+                    <span className="text-gray-500">Market / Store:</span>
+                    <Link
+                      to={`/stores/${product.store.slug}`}
+                      className="ml-2 text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      {product.store.name}
+                    </Link>
+                  </div>
+                )}
               </div>
+
+              {/* Shade selection — dropdown + circular swatch strip (retail-style) */}
+              {shades.length >= 1 && selectedShade && (
+                <div className="mb-6 max-w-lg" ref={shadeMenuRef}>
+                  <p className="text-sm font-medium text-gray-800 mb-2">Shade</p>
+                  <div className="relative">
+                    {shades.length > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setShadeMenuOpen((o) => !o)}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-200 bg-gray-100 hover:bg-gray-200/90 text-left transition-colors shadow-sm"
+                          aria-expanded={shadeMenuOpen}
+                          aria-haspopup="listbox"
+                        >
+                          {renderBarSwatch(selectedShade, 'w-9 h-9')}
+                          <span className="flex-1 min-w-0 font-medium text-gray-900 truncate">
+                            {selectedShade.name}
+                          </span>
+                          <FaChevronDown
+                            className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${shadeMenuOpen ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                        {shadeMenuOpen && (
+                          <ul
+                            className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-60 overflow-y-auto py-1"
+                            role="listbox"
+                          >
+                            {shades.map((s, idx) => (
+                              <li key={s._key || `${s.name}-${idx}`}>
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={idx === selectedShadeIdx}
+                                  className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 ${
+                                    idx === selectedShadeIdx ? 'bg-primary-50/80' : ''
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedShadeIdx(idx);
+                                    setShadeMenuOpen(false);
+                                  }}
+                                >
+                                  {renderBarSwatch(s, 'w-9 h-9')}
+                                  <span className="font-medium text-gray-900 truncate">{s.name}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    ) : (
+                      <div className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-200 bg-gray-100 shadow-sm">
+                        {renderBarSwatch(selectedShade, 'w-9 h-9')}
+                        <span className="flex-1 min-w-0 font-medium text-gray-900 truncate">
+                          {selectedShade.name}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Horizontal swatch row — selected: dark ring + offset (halo) */}
+                  <div className="flex gap-3 mt-4 overflow-x-auto pb-1 pt-0.5 -mx-0.5 px-0.5">
+                    {shades.map((s, idx) => {
+                      const active = idx === selectedShadeIdx;
+                      return (
+                        <button
+                          key={s._key || `${s.name}-${idx}`}
+                          type="button"
+                          onClick={() => setSelectedShadeIdx(idx)}
+                          title={s.name}
+                          aria-label={`Shade ${s.name}`}
+                          className={`shrink-0 rounded-full transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                            active
+                              ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white'
+                              : 'ring-2 ring-transparent ring-offset-2 ring-offset-white hover:ring-gray-200'
+                          }`}
+                        >
+                          {s.isOriginal ? (
+                            originalThumb ? (
+                              <img
+                                src={toAbsoluteImageUrl(originalThumb)}
+                                alt=""
+                                className="w-10 h-10 rounded-full object-cover border border-gray-100 bg-white"
+                                onError={(e) => {
+                                  if (e.target.dataset.failed) return;
+                                  e.target.dataset.failed = '1';
+                                  e.target.src = PLACEHOLDER_PRODUCT;
+                                }}
+                              />
+                            ) : (
+                              <span
+                                className="w-10 h-10 rounded-full border border-gray-200 block flex items-center justify-center bg-gray-100 text-[9px] font-semibold text-gray-500 leading-tight text-center px-0.5"
+                                title="Original (default listing)"
+                              >
+                                Orig
+                              </span>
+                            )
+                          ) : s.image ? (
+                            <img
+                              src={toAbsoluteImageUrl(s.image)}
+                              alt=""
+                              className="w-10 h-10 rounded-full object-cover border border-gray-100 bg-white"
+                              onError={(e) => {
+                                if (e.target.dataset.failed) return;
+                                e.target.dataset.failed = '1';
+                                e.target.src = PLACEHOLDER_PRODUCT;
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className="w-10 h-10 rounded-full border border-gray-200 block"
+                              style={swatchFillStyle(s)}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Quantity */}
               <div className="mb-6">
