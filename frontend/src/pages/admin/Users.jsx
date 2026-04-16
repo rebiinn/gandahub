@@ -57,13 +57,6 @@ const Users = () => {
     fetchSellerApplications();
   }, [fetchSellerApplications]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchUsers(1);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [search, roleFilter, statusFilter, fetchUsers]);
-
   const fetchUsers = useCallback(async (page = 1) => {
     try {
       setLoading(true);
@@ -80,6 +73,13 @@ const Users = () => {
       setLoading(false);
     }
   }, [search, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchUsers(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, roleFilter, statusFilter, fetchUsers]);
 
   const handleSearch = (e) => {
     e.preventDefault();
