@@ -8,6 +8,7 @@ A modern, full-stack e-commerce web application for cosmetics and beauty product
 
 To understand how the frontend, backend, and the order pipeline fit together, see:
 - `SYSTEM_DOCUMENTATION.md` (one-file “all in one” documentation)
+- `PROJECT_DOCUMENTATION.md` (presentation-style documentation similar to slide format)
 
 ## Requirements
 
