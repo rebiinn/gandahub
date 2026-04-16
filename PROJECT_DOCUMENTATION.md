@@ -140,6 +140,7 @@ After seeding the database:
 | Admin | admin@gandahub.com | password123 |
 | Rider | rider@gandahub.com | password123 |
 | Customer | customer@gandahub.com | password123 |
+| Logistics | logistics@gandahub.com | password123 |
 
 ---
 
