@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { FaFilter, FaTimes, FaSearch } from 'react-icons/fa';
 import { productsAPI, categoriesAPI, storesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -7,10 +7,12 @@ import ProductCard from '../components/common/ProductCard';
 import Loading from '../components/common/Loading';
 import Pagination from '../components/common/Pagination';
 import Button from '../components/common/Button';
+import { toAbsoluteImageUrl } from '../utils/imageUrl';
 
 const Products = () => {
   const { user } = useAuth();
   const isSupplier = user?.role === 'supplier';
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [supplierStore, setSupplierStore] = useState(null);
   const [products, setProducts] = useState([]);
@@ -41,14 +43,23 @@ const Products = () => {
     store_id: searchParams.get('store_id') || '',
   });
 
-  useEffect(() => {
-    fetchCategories();
+  const fetchCategories = useCallback(async () => {
+    try {
+      const response = await categoriesAPI.getAll({ active: true });
+      setCategories(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
   }, []);
 
-  useEffect(() => {
-    if (isSupplier) return;
-    fetchBrands();
-  }, [isSupplier]);
+  const fetchBrands = useCallback(async () => {
+    try {
+      const response = await productsAPI.getBrands();
+      setBrands(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch brands:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isSupplier) {
@@ -81,29 +92,7 @@ const Products = () => {
     }
   }, [isSupplier, searchParams, setSearchParams]);
 
-  useEffect(() => {
-    fetchProducts();
-  }, [searchParams]);
-
-  const fetchCategories = async () => {
-    try {
-      const response = await categoriesAPI.getAll({ active: true });
-      setCategories(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch categories:', error);
-    }
-  };
-
-  const fetchBrands = async () => {
-    try {
-      const response = await productsAPI.getBrands();
-      setBrands(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch brands:', error);
-    }
-  };
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setFetchError(null);
@@ -129,7 +118,20 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchParams]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  useEffect(() => {
+    if (isSupplier) return;
+    fetchBrands();
+  }, [isSupplier, fetchBrands]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const applyFilters = () => {
     const params = new URLSearchParams();
@@ -200,15 +202,35 @@ const Products = () => {
     if (filters.search) return `Search: "${filters.search}"`;
     return 'All Products';
   })();
+  const supplierStoreLogo = supplierStore?.logo ? toAbsoluteImageUrl(supplierStore.logo, '') : '';
+  const supplierStoreInitial = supplierStore?.name?.trim()?.[0]?.toUpperCase() || 'S';
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <h1 className="text-3xl font-display font-bold text-gray-800">
-            {pageTitle}
-          </h1>
+          <div className="flex items-center gap-3">
+            {isSupplier && (
+              <div className="w-12 h-12 rounded-full border border-gray-200 bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
+                {supplierStoreLogo ? (
+                  <img
+                    src={supplierStoreLogo}
+                    alt={`${supplierStore?.name || 'Store'} logo`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <span className="text-base font-semibold text-primary-600">{supplierStoreInitial}</span>
+                )}
+              </div>
+            )}
+            <h1 className="text-3xl font-display font-bold text-gray-800">
+              {pageTitle}
+            </h1>
+          </div>
           <p className="text-gray-600 mt-2">
             {isSupplier ? `${meta.total} products in your catalog` : `${meta.total} products found`}
           </p>
@@ -358,7 +380,12 @@ const Products = () => {
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
                   {products.map((product) => (
-                    <ProductCard key={product.id} product={product} />
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      mode={isSupplier ? 'supplier' : 'customer'}
+                      onEdit={(p) => navigate(`/supplier/products?edit=${p.id}`)}
+                    />
                   ))}
                 </div>
 

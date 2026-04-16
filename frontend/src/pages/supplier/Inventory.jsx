@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { FaWarehouse, FaExclamationTriangle, FaMinus, FaCheck } from 'react-icons/fa';
 import { stockRequestsAPI } from '../../services/api';
 import Loading from '../../components/common/Loading';
@@ -51,9 +50,6 @@ const SupplierInventory = () => {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Inventory</h1>
-        <Link to="/supplier/stock-requests" className="text-sm text-primary-600 hover:text-primary-700">
-          View stock requests
-        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -103,9 +99,8 @@ const SupplierInventory = () => {
             <div>
               <h2 className="font-semibold text-gray-800">What to watch</h2>
               <p className="text-sm text-gray-600">
-                Admin requests stock when the product is <span className="font-medium">Low Stock</span> or{" "}
-                <span className="font-medium">Out of Stock</span> in the shop. Pending requests below show what admins
-                already asked you for.
+                Keep your <span className="font-medium">Supplier Available</span> stock updated so approved products stay
+                available in the shop.
               </p>
             </div>
           </div>
@@ -121,14 +116,13 @@ const SupplierInventory = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Shop</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warehouse</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Threshold</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pending Requests</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
                     No inventory items found.
                   </td>
                 </tr>
@@ -147,13 +141,6 @@ const SupplierInventory = () => {
                         />
                         <div>
                           <p className="font-medium text-gray-800">{p.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {p.pending_quantity > 0 ? (
-                              <span className="text-amber-700 font-medium">{p.pending_quantity} requested</span>
-                            ) : (
-                              <span className="text-gray-400">No pending request</span>
-                            )}
-                          </p>
                         </div>
                       </div>
                     </td>
@@ -174,13 +161,6 @@ const SupplierInventory = () => {
                     </td>
                     <td className="px-6 py-4 text-gray-600">{p.inventory_stock ?? 0}</td>
                     <td className="px-6 py-4 text-gray-600">{p.low_stock_threshold ?? 0}</td>
-                    <td className="px-6 py-4">
-                      {Number(p.pending_quantity ?? 0) > 0 ? (
-                        <Badge variant="warning">Pending: {p.pending_quantity}</Badge>
-                      ) : (
-                        <Badge variant="default">—</Badge>
-                      )}
-                    </td>
                     <td className="px-6 py-4">{getInShopBadge(p)}</td>
                   </tr>
                 ))

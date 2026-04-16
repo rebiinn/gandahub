@@ -64,6 +64,7 @@ const Profile = () => {
   const {
     register: registerProfile,
     handleSubmit: handleProfileSubmit,
+    reset: resetProfile,
     formState: { errors: profileErrors },
   } = useForm({
     defaultValues: {
@@ -76,6 +77,19 @@ const Profile = () => {
       zip_code: user?.zip_code || '',
     },
   });
+
+  useEffect(() => {
+    if (!user) return;
+    resetProfile({
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      phone: isSupplier ? (store?.phone || user.phone || '') : (user.phone || ''),
+      address: isSupplier ? (store?.address || user.address || '') : (user.address || ''),
+      city: user.city || '',
+      state: user.state || '',
+      zip_code: user.zip_code || '',
+    });
+  }, [user, store, isSupplier, resetProfile]);
 
   const {
     register: registerPassword,
@@ -91,6 +105,16 @@ const Profile = () => {
     try {
       setLoading(true);
       await updateProfile(data);
+      if (isSupplier && store?.id) {
+        const storeRes = await storesAPI.update(store.id, {
+          address: data.address || '',
+          phone: data.phone || '',
+        });
+        const nextStore = storeRes.data?.data || null;
+        if (nextStore) {
+          setStore(nextStore);
+        }
+      }
       toast.success('Profile updated successfully');
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to update profile';

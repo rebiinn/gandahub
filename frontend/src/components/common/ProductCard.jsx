@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom';
-import { FaStar, FaShoppingCart, FaHeart } from 'react-icons/fa';
+import { FaStar, FaShoppingCart, FaHeart, FaEdit } from 'react-icons/fa';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../../utils/imageUrl';
 import Button from './Button';
 
-const ProductCard = ({ product }) => {
+const ProductCard = ({ product, mode = 'customer', onEdit }) => {
   const { addToCart, loading } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
 
@@ -16,20 +16,28 @@ const ProductCard = ({ product }) => {
     thumbnail,
     price,
     sale_price,
+    is_on_sale,
     average_rating,
     review_count,
     is_featured,
     stock_quantity,
   } = product;
 
-  const effectivePrice = sale_price || price;
-  const isOnSale = sale_price && sale_price < price;
+  const isOnSale = Boolean(is_on_sale) && !!sale_price && sale_price < price;
+  const effectivePrice = isOnSale ? sale_price : price;
   const inStock = stock_quantity > 0;
+  const isSupplierView = mode === 'supplier';
 
   const handleAddToCart = (e) => {
     e.preventDefault();
     e.stopPropagation();
     addToCart(id, 1);
+  };
+
+  const handleSupplierEdit = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEdit?.(product);
   };
 
   const formatPrice = (amount) => {
@@ -39,9 +47,8 @@ const ProductCard = ({ product }) => {
     }).format(amount);
   };
 
-  return (
-    <Link to={`/products/${slug}`} className="group">
-      <div className="card relative">
+  const CardBody = (
+    <div className="card relative">
         {/* Image Container */}
         <div className="relative aspect-square overflow-hidden bg-gray-100">
           <img
@@ -65,7 +72,7 @@ const ProductCard = ({ product }) => {
             )}
             {is_featured && (
               <span className="badge badge-primary">
-                Featured
+                Best Seller
               </span>
             )}
             {!inStock && (
@@ -75,23 +82,23 @@ const ProductCard = ({ product }) => {
             )}
           </div>
 
-          {/* Quick Actions */}
-          <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button 
-              className={`p-2 bg-white rounded-full shadow-md hover:bg-primary-50 transition-colors ${isInWishlist(id) ? 'text-primary-600' : 'hover:text-primary-600'}`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleWishlist(product);
-              }}
-              title={isInWishlist(id) ? 'Remove from wishlist' : 'Add to wishlist'}
-            >
-              <FaHeart className={`w-4 h-4 ${isInWishlist(id) ? 'fill-current' : ''}`} />
-            </button>
-          </div>
+          {!isSupplierView && (
+            <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button 
+                className={`p-2 bg-white rounded-full shadow-md hover:bg-primary-50 transition-colors ${isInWishlist(id) ? 'text-primary-600' : 'hover:text-primary-600'}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleWishlist(product);
+                }}
+                title={isInWishlist(id) ? 'Remove from wishlist' : 'Add to wishlist'}
+              >
+                <FaHeart className={`w-4 h-4 ${isInWishlist(id) ? 'fill-current' : ''}`} />
+              </button>
+            </div>
+          )}
 
-          {/* Add to Cart Button */}
-          {inStock && (
+          {!isSupplierView && inStock && (
             <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
               <Button
                 variant="primary"
@@ -102,6 +109,20 @@ const ProductCard = ({ product }) => {
               >
                 <FaShoppingCart />
                 Add to Cart
+              </Button>
+            </div>
+          )}
+
+          {isSupplierView && (
+            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                variant="primary"
+                size="sm"
+                fullWidth
+                onClick={handleSupplierEdit}
+              >
+                <FaEdit />
+                Edit in Dashboard
               </Button>
             </div>
           )}
@@ -119,22 +140,23 @@ const ProductCard = ({ product }) => {
             {name}
           </h3>
 
-          {/* Rating */}
-          <div className="flex items-center gap-1 mt-2">
-            <div className="flex items-center text-yellow-400">
-              {[...Array(5)].map((_, i) => (
-                <FaStar
-                  key={i}
-                  className={`w-3 h-3 ${
-                    i < Math.round(average_rating) ? 'fill-current' : 'text-gray-300'
-                  }`}
-                />
-              ))}
+          {!isSupplierView && (
+            <div className="flex items-center gap-1 mt-2">
+              <div className="flex items-center text-yellow-400">
+                {[...Array(5)].map((_, i) => (
+                  <FaStar
+                    key={i}
+                    className={`w-3 h-3 ${
+                      i < Math.round(average_rating) ? 'fill-current' : 'text-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-gray-500">
+                ({review_count})
+              </span>
             </div>
-            <span className="text-xs text-gray-500">
-              ({review_count})
-            </span>
-          </div>
+          )}
 
           {/* Price */}
           <div className="mt-3 flex items-center gap-2">
@@ -149,6 +171,15 @@ const ProductCard = ({ product }) => {
           </div>
         </div>
       </div>
+  );
+
+  if (isSupplierView) {
+    return <div className="group">{CardBody}</div>;
+  }
+
+  return (
+    <Link to={`/products/${slug}`} className="group">
+      {CardBody}
     </Link>
   );
 };

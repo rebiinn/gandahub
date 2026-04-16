@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   FaHome,
@@ -6,7 +6,6 @@ import {
   FaList,
   FaShoppingCart,
   FaUsers,
-  FaTruck,
   FaChartBar,
   FaCog,
   FaBars,
@@ -17,7 +16,6 @@ import {
   FaEnvelope,
   FaStore,
   FaBell,
-  FaStar,
   FaDolly,
 } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
@@ -34,7 +32,7 @@ const AdminLayout = () => {
 
   const isAdmin = user?.role === 'admin';
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!isAdmin) return;
     try {
       const [listRes, countRes] = await Promise.all([
@@ -46,7 +44,7 @@ const AdminLayout = () => {
     } catch {
       // ignore
     }
-  };
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -63,7 +61,7 @@ const AdminLayout = () => {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [user?.role, isAdmin]);
+  }, [isAdmin, fetchNotifications]);
 
   const handleNotificationClick = async (n) => {
     setNotificationsOpen(false);
@@ -95,10 +93,8 @@ const AdminLayout = () => {
     { name: 'Inventory', path: '/admin/inventory', icon: FaWarehouse },
     { name: 'Orders', path: '/admin/orders', icon: FaShoppingCart },
     { name: 'Payments', path: '/admin/payments', icon: FaMoneyBillWave },
-    { name: 'Customers', path: '/admin/users', icon: FaUsers },
-    { name: 'Deliveries', path: '/admin/deliveries', icon: FaTruck },
+    { name: 'Users', path: '/admin/users', icon: FaUsers },
     { name: 'Logistics', path: '/admin/logistics', icon: FaDolly },
-    { name: 'Reviews', path: '/admin/reviews', icon: FaStar },
     { name: 'Reports', path: '/admin/reports', icon: FaChartBar },
     { name: 'Newsletter', path: '/admin/newsletter', icon: FaEnvelope },
     { name: 'Settings', path: '/admin/settings', icon: FaCog },

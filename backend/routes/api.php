@@ -20,6 +20,8 @@ use App\Http\Controllers\Api\InventoryReceiptController;
 use App\Http\Controllers\Api\LogisticsController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\RiderApplicationController;
+use App\Http\Controllers\Api\SellerApplicationController;
 use App\Http\Controllers\Api\SystemSettingController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserController;
@@ -98,6 +100,9 @@ Route::prefix('v1')->group(function () {
 
     // Newsletter (public)
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
+    Route::post('/rider-applications', [RiderApplicationController::class, 'store']);
+    Route::post('/seller-applications', [SellerApplicationController::class, 'store']);
+    Route::post('/application-documents', [UploadController::class, 'uploadApplicationDocument']);
 
     // Serve uploaded storage files (no auth; use so images always load from API)
     Route::get('/storage/serve', function (Request $request) {
@@ -218,6 +223,12 @@ Route::prefix('v1')->group(function () {
             Route::post('/users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
             Route::get('/users-riders', [UserController::class, 'riders']);
             Route::get('/users-customers', [UserController::class, 'customers']);
+            Route::get('/rider-applications', [RiderApplicationController::class, 'index']);
+            Route::post('/rider-applications/{id}/approve', [RiderApplicationController::class, 'approve']);
+            Route::post('/rider-applications/{id}/reject', [RiderApplicationController::class, 'reject']);
+            Route::get('/seller-applications', [SellerApplicationController::class, 'index']);
+            Route::post('/seller-applications/{id}/approve', [SellerApplicationController::class, 'approve']);
+            Route::post('/seller-applications/{id}/reject', [SellerApplicationController::class, 'reject']);
 
             // Categories management
             Route::post('/categories', [CategoryController::class, 'store']);
@@ -226,6 +237,8 @@ Route::prefix('v1')->group(function () {
 
             // Products management
             Route::post('/products', [ProductController::class, 'store']);
+            Route::get('/products/pending-approvals', [ProductController::class, 'pendingApprovals']);
+            Route::post('/products/{id}/approve', [ProductController::class, 'approveSupplierProduct']);
             Route::put('/products/{id}', [ProductController::class, 'update']);
             Route::delete('/products/{id}', [ProductController::class, 'destroy']);
             Route::put('/products/{id}/stock', [ProductController::class, 'updateStock']);
@@ -267,6 +280,7 @@ Route::prefix('v1')->group(function () {
             Route::put('/settings/bulk', [SystemSettingController::class, 'bulkUpdate']);
             Route::delete('/settings/{key}', [SystemSettingController::class, 'destroy']);
             Route::post('/settings/clear-cache', [SystemSettingController::class, 'clearCache']);
+            Route::post('/settings/clear-all-data', [SystemSettingController::class, 'clearAllData']);
             Route::post('/settings/backup', [SystemSettingController::class, 'backup']);
             Route::get('/settings/system-info', [SystemSettingController::class, 'systemInfo']);
         });
@@ -284,6 +298,18 @@ Route::prefix('v1')->group(function () {
             Route::get('/stats/{riderId}', [DeliveryController::class, 'riderStats']);
         });
 
+        // Logistics partner routes (separate dashboard role)
+        Route::middleware('role:logistics')->prefix('logistics')->group(function () {
+            Route::get('/dashboard', [DeliveryController::class, 'logisticsDashboard']);
+            Route::get('/deliveries', [DeliveryController::class, 'index']);
+            Route::get('/deliveries/{id}', [DeliveryController::class, 'show']);
+            Route::post('/deliveries/{id}/arrive-station', [DeliveryController::class, 'arriveAtStation']);
+            Route::get('/catalog', [LogisticsController::class, 'catalog']);
+            Route::get('/rider-applications', [RiderApplicationController::class, 'index']);
+            Route::post('/rider-applications/{id}/approve', [RiderApplicationController::class, 'approve']);
+            Route::post('/rider-applications/{id}/reject', [RiderApplicationController::class, 'reject']);
+        });
+
         // Supplier routes - manage own store's products
         Route::middleware('role:supplier')->prefix('supplier')->group(function () {
             Route::get('/reports/dashboard', [ReportController::class, 'supplierDashboard']);
@@ -297,9 +323,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/upload/image', [UploadController::class, 'uploadImage']);
             Route::post('/products', [ProductController::class, 'supplierStore']);
             Route::put('/products/{id}', [ProductController::class, 'supplierUpdate']);
+            Route::delete('/products/{id}', [ProductController::class, 'supplierDestroy']);
             Route::put('/products/{id}/stock', [ProductController::class, 'supplierUpdateStock']);
             Route::put('/orders/{id}/status', [OrderController::class, 'supplierUpdateStatus']);
-            Route::post('/deliveries/{id}/arrive-station', [DeliveryController::class, 'arriveAtStation']);
+            Route::post('/orders/{id}/cancel-request/approve', [OrderController::class, 'supplierApproveCancelRequest']);
+            Route::post('/orders/{id}/cancel-request/reject', [OrderController::class, 'supplierRejectCancelRequest']);
         });
     });
 });

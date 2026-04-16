@@ -12,6 +12,22 @@ use Illuminate\Support\Str;
 
 class StoreController extends Controller
 {
+    private const STAFF_EMAIL_DOMAIN = 'gandahub.com';
+
+    private function normalizeStaffEmail(?string $value): string
+    {
+        $raw = strtolower(trim((string) $value));
+        if ($raw === '') {
+            return '';
+        }
+        $localPart = strstr($raw, '@', true);
+        if ($localPart === false) {
+            $localPart = $raw;
+        }
+
+        return $localPart . '@' . self::STAFF_EMAIL_DOMAIN;
+    }
+
     /**
      * Get all stores (Admin) or own store (Supplier).
      */
@@ -52,6 +68,12 @@ class StoreController extends Controller
      */
     public function store(Request $request)
     {
+        if ($request->boolean('create_supplier')) {
+            $request->merge([
+                'supplier_email' => $this->normalizeStaffEmail($request->input('supplier_email')),
+            ]);
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:255|unique:stores',

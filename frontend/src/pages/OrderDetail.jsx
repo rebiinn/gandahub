@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { FaArrowLeft, FaTruck, FaCheckCircle, FaBox, FaStar } from 'react-icons/fa';
 import { ordersAPI, reviewsAPI } from '../services/api';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
@@ -8,6 +8,15 @@ import Loading from '../components/common/Loading';
 import Badge from '../components/common/Badge';
 import Button from '../components/common/Button';
 import { toast } from 'react-toastify';
+
+const CANCELLATION_REASONS = [
+  { value: 'delivery_too_slow', label: 'Delivery is taking too long' },
+  { value: 'found_cheaper', label: 'Found a cheaper alternative' },
+  { value: 'wrong_address', label: 'Wrong shipping address selected' },
+  { value: 'changed_mind', label: 'Changed my mind' },
+  { value: 'ordered_by_mistake', label: 'Ordered by mistake' },
+  { value: 'other', label: 'Other reason' },
+];
 
 const StarRating = ({ value, onChange, readonly = false, size = 'md' }) => {
   const sizeClass = size === 'sm' ? 'w-4 h-4' : 'w-6 h-6';
@@ -30,9 +39,16 @@ const StarRating = ({ value, onChange, readonly = false, size = 'md' }) => {
 
 const OrderDetail = () => {
   const { id } = useParams();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const paymentReturn = searchParams.get('payment');
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshingPayment, setRefreshingPayment] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [showCancelForm, setShowCancelForm] = useState(false);
+  const [cancelReason, setCancelReason] = useState(CANCELLATION_REASONS[0].value);
+  const [cancelDetails, setCancelDetails] = useState('');
   const [riderRating, setRiderRating] = useState(0);
   const [riderComment, setRiderComment] = useState('');
   const [submittingRider, setSubmittingRider] = useState(false);
@@ -40,11 +56,7 @@ const OrderDetail = () => {
   const [productComments, setProductComments] = useState({});
   const [submittingProduct, setSubmittingProduct] = useState(null);
 
-  useEffect(() => {
-    fetchOrder();
-  }, [id]);
-
-  const fetchOrder = async () => {
+  const fetchOrder = useCallback(async () => {
     try {
       setLoading(true);
       const response = await ordersAPI.getOne(id);
@@ -54,15 +66,88 @@ const OrderDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchOrder();
+  }, [fetchOrder]);
+
+  useEffect(() => {
+    if (order?.status && order.status !== 'pending') {
+      setShowCancelForm(false);
+    }
+  }, [order?.status]);
+
+  useEffect(() => {
+    if (!order || order.status !== 'delivered') return;
+    if (location.hash !== '#rate-products') return;
+    const el = document.getElementById('rate-products');
+    if (!el) return;
+    const timer = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [order, location.hash, order?.status]);
+
+  useEffect(() => {
+    if (paymentReturn !== 'success') return;
+    let cancelled = false;
+    let attempts = 0;
+    let intervalId = null;
+    setRefreshingPayment(true);
+
+    const refreshPayment = async () => {
+      try {
+        const response = await ordersAPI.getOne(id);
+        const currentOrder = response?.data?.data;
+        if (!cancelled && currentOrder) {
+          setOrder(currentOrder);
+          const paymentStatus = String(currentOrder?.payment?.status || '').toLowerCase();
+          if (paymentStatus === 'completed') {
+            setRefreshingPayment(false);
+            return true;
+          }
+        }
+      } catch {
+        // ignore and retry
+      }
+      return false;
+    };
+
+    (async () => {
+      const done = await refreshPayment();
+      if (done || cancelled) return;
+      intervalId = setInterval(async () => {
+        attempts += 1;
+        const finished = await refreshPayment();
+        if (finished || attempts >= 20) {
+          if (intervalId) clearInterval(intervalId);
+          if (!cancelled) setRefreshingPayment(false);
+        }
+      }, 3000);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+      setRefreshingPayment(false);
+    };
+  }, [id, paymentReturn]);
 
   const handleCancelOrder = async () => {
-    if (!window.confirm('Are you sure you want to cancel this order?')) return;
-
     try {
+      if (!cancelReason) {
+        toast.error('Please select a cancellation reason');
+        return;
+      }
       setCancelling(true);
-      await ordersAPI.cancel(id);
-      toast.success('Order cancelled successfully');
+      await ordersAPI.cancel(id, {
+        reason: cancelReason,
+        details: cancelDetails.trim() || null,
+      });
+      toast.success('Cancellation request sent to seller');
+      setShowCancelForm(false);
+      setCancelDetails('');
       fetchOrder();
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to cancel order';
@@ -143,6 +228,7 @@ const OrderDetail = () => {
       shipped: 'primary',
       out_for_delivery: 'primary',
       delivered: 'success',
+      cancel_requested: 'warning',
       cancelled: 'danger',
       refunded: 'danger',
     };
@@ -158,7 +244,7 @@ const OrderDetail = () => {
   ];
 
   const getCurrentStatusIndex = () => {
-    if (order?.status === 'cancelled' || order?.status === 'refunded') return -1;
+    if (['cancel_requested', 'cancelled', 'refunded'].includes(order?.status)) return -1;
     if (order?.status === 'out_for_delivery') {
       return orderStatuses.findIndex((s) => s.key === 'shipped');
     }
@@ -198,6 +284,11 @@ const OrderDetail = () => {
 
         {/* Order Header */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+          {refreshingPayment && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Verifying your payment with the gateway. This will update automatically once confirmed.
+            </div>
+          )}
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-display font-bold text-gray-800">
@@ -209,18 +300,59 @@ const OrderDetail = () => {
             </div>
             <div className="flex items-center gap-4">
               {getStatusBadge(order.status)}
-              {(order.status === 'pending' || order.status === 'confirmed') && (
+              {order.status === 'pending' && (
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={handleCancelOrder}
+                  onClick={() => setShowCancelForm((prev) => !prev)}
                   loading={cancelling}
                 >
-                  Cancel Order
+                  Request Cancellation
                 </Button>
               )}
             </div>
           </div>
+
+          {order.status === 'cancel_requested' && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Cancellation request sent. Seller approval is required before final cancellation and refund.
+              {order.cancellation_reason ? ` Reason: ${order.cancellation_reason}` : ''}
+            </div>
+          )}
+
+          {showCancelForm && order.status === 'pending' && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-medium text-red-800 mb-2">
+                Tell the seller why you want to cancel this order.
+              </p>
+              <div className="grid gap-3">
+                <select
+                  className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                >
+                  {CANCELLATION_REASONS.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+                <textarea
+                  rows={2}
+                  className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm"
+                  placeholder="Optional details for seller"
+                  value={cancelDetails}
+                  onChange={(e) => setCancelDetails(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button variant="danger" size="sm" onClick={handleCancelOrder} loading={cancelling}>
+                    Send Request
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowCancelForm(false)} disabled={cancelling}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Order Progress */}
           {currentStatusIndex >= 0 && (
@@ -334,7 +466,8 @@ const OrderDetail = () => {
               </div>
             )}
 
-            {/* Rate products */}
+            {/* Rate products — anchor #rate-products linked from post-delivery store messages */}
+            <div id="rate-products" className="scroll-mt-28">
             <h3 className="text-sm font-medium text-gray-700 mb-3">Rate your products</h3>
             <div className="space-y-4">
               {order.items?.map((item) => {
@@ -395,6 +528,7 @@ const OrderDetail = () => {
                   </div>
                 );
               })}
+            </div>
             </div>
           </div>
         )}

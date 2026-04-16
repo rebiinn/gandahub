@@ -9,11 +9,18 @@ const MapPinPicker = ({ center, pin, onPinChange, height = 280 }) => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markerRef = useRef(null);
+  const centerRef = useRef(center || DEFAULT_CENTER);
+  const onPinChangeRef = useRef(onPinChange);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    centerRef.current = center || DEFAULT_CENTER;
+    onPinChangeRef.current = onPinChange;
+  }, [center, onPinChange]);
+
+  useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
-    const map = L.map(mapRef.current).setView(center || DEFAULT_CENTER, DEFAULT_ZOOM);
+    const map = L.map(mapRef.current).setView(centerRef.current, DEFAULT_ZOOM);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
     }).addTo(map);
@@ -32,7 +39,7 @@ const MapPinPicker = ({ center, pin, onPinChange, height = 280 }) => {
         });
         markerRef.current = L.marker([lat, lng], { icon }).addTo(map);
       }
-      onPinChange?.(lat, lng);
+      onPinChangeRef.current?.(lat, lng);
     });
 
     mapInstance.current = map;
@@ -71,7 +78,7 @@ const MapPinPicker = ({ center, pin, onPinChange, height = 280 }) => {
       mapInstance.current.removeLayer(markerRef.current);
       markerRef.current = null;
     }
-  }, [ready, pin?.lat, pin?.lng]);
+  }, [ready, pin]);
 
   return (
     <div className="rounded-lg overflow-hidden border border-gray-300 relative z-0 isolate">

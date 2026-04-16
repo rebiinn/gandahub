@@ -10,6 +10,22 @@ use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
+    private const STAFF_EMAIL_DOMAIN = 'gandahub.com';
+
+    private function normalizeStaffEmail(?string $value): string
+    {
+        $raw = strtolower(trim((string) $value));
+        if ($raw === '') {
+            return '';
+        }
+        $localPart = strstr($raw, '@', true);
+        if ($localPart === false) {
+            $localPart = $raw;
+        }
+
+        return $localPart . '@' . self::STAFF_EMAIL_DOMAIN;
+    }
+
     /**
      * Get all users (Admin only).
      */
@@ -59,6 +75,12 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
+        if (in_array((string) $request->input('role'), ['rider', 'supplier'], true)) {
+            $request->merge([
+                'email' => $this->normalizeStaffEmail($request->input('email')),
+            ]);
+        }
+
         $validator = Validator::make($request->all(), [
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
@@ -67,7 +89,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'gcash_number' => 'nullable|string|regex:/^09\d{9}$/',
             'gcash_balance' => 'nullable|numeric|min:0',
-            'role' => 'required|in:admin,customer,rider,supplier',
+            'role' => 'required|in:admin,customer,rider,supplier,logistics',
             'address' => 'nullable|string',
             'city' => 'nullable|string|max:255',
             'state' => 'nullable|string|max:255',
@@ -109,6 +131,13 @@ class UserController extends Controller
             return $this->errorResponse('User not found', 404);
         }
 
+        $targetRole = (string) ($request->input('role') ?: $user->role);
+        if (in_array($targetRole, ['rider', 'supplier'], true) && $request->has('email')) {
+            $request->merge([
+                'email' => $this->normalizeStaffEmail($request->input('email')),
+            ]);
+        }
+
         $validator = Validator::make($request->all(), [
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
@@ -117,7 +146,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'gcash_number' => 'nullable|string|regex:/^09\d{9}$/',
             'gcash_balance' => 'nullable|numeric|min:0',
-            'role' => 'sometimes|in:admin,customer,rider,supplier',
+            'role' => 'sometimes|in:admin,customer,rider,supplier,logistics',
             'address' => 'nullable|string',
             'city' => 'nullable|string|max:255',
             'state' => 'nullable|string|max:255',

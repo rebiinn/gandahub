@@ -1,17 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { FaStar, FaMinus, FaPlus, FaShoppingCart, FaHeart, FaShare, FaChevronDown, FaFacebookF, FaFacebookMessenger, FaTwitter, FaWhatsapp, FaLink } from 'react-icons/fa';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { FaStar, FaMinus, FaPlus, FaShoppingCart, FaHeart, FaShare, FaChevronDown, FaFacebookF, FaFacebookMessenger, FaTwitter, FaWhatsapp, FaLink, FaBolt } from 'react-icons/fa';
 import { productsAPI, reviewsAPI } from '../services/api';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
 import { getProductShadesWithOriginal } from '../utils/productShades';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
+import { useAuth } from '../context/AuthContext';
 import Loading from '../components/common/Loading';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 
 const ProductDetail = () => {
   const { slug } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSupplier = user?.role === 'supplier';
   const { addToCart, loading: cartLoading } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const [product, setProduct] = useState(null);
@@ -26,9 +30,27 @@ const ProductDetail = () => {
   const shadeMenuRef = useRef(null);
   const shareMenuRef = useRef(null);
 
+  const fetchProduct = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await productsAPI.getBySlug(slug);
+      setProduct(response.data.data);
+      
+      // Fetch reviews
+      if (response.data.data?.id) {
+        const reviewsRes = await reviewsAPI.getForProduct(response.data.data.id);
+        setReviews(reviewsRes.data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch product:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [slug]);
+
   useEffect(() => {
     fetchProduct();
-  }, [slug]);
+  }, [fetchProduct]);
 
   useEffect(() => {
     setSelectedShadeIdx(0);
@@ -63,24 +85,6 @@ const ProductDetail = () => {
     return () => document.removeEventListener('mousedown', close);
   }, [shareMenuOpen]);
 
-  const fetchProduct = async () => {
-    try {
-      setLoading(true);
-      const response = await productsAPI.getBySlug(slug);
-      setProduct(response.data.data);
-      
-      // Fetch reviews
-      if (response.data.data?.id) {
-        const reviewsRes = await reviewsAPI.getForProduct(response.data.data.id);
-        setReviews(reviewsRes.data.data || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch product:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const formatPrice = (amount) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
@@ -88,8 +92,8 @@ const ProductDetail = () => {
     }).format(amount);
   };
 
-  const handleAddToCart = () => {
-    if (!product) return;
+  const getLineOptions = () => {
+    if (!product) return null;
     const shades = getProductShadesWithOriginal(product);
     let options = null;
     if (shades.length) {
@@ -103,7 +107,20 @@ const ProductDetail = () => {
         }
       }
     }
-    addToCart(product.id, quantity, options);
+    return options;
+  };
+
+  const handleAddToCart = () => {
+    if (!product) return;
+    addToCart(product.id, quantity, getLineOptions());
+  };
+
+  const handleBuyNow = async () => {
+    if (!product) return;
+    const ok = await addToCart(product.id, quantity, getLineOptions(), { silent: true });
+    if (ok) {
+      navigate('/checkout');
+    }
   };
 
   const getShareUrl = () => {
@@ -527,122 +544,151 @@ const ProductDetail = () => {
                 </div>
               )}
 
-              {/* Quantity */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center border border-gray-300 rounded-lg">
-                    <button
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="p-3 hover:bg-gray-100 transition-colors"
-                    >
-                      <FaMinus className="w-3 h-3" />
-                    </button>
-                    <span className="px-4 py-2 font-medium">{quantity}</span>
-                    <button
-                      onClick={() => setQuantity(Math.min(product.stock_quantity, quantity + 1))}
-                      className="p-3 hover:bg-gray-100 transition-colors"
-                      disabled={quantity >= product.stock_quantity}
-                    >
-                      <FaPlus className="w-3 h-3" />
-                    </button>
+              {!isSupplier && (
+                <>
+                  {/* Quantity */}
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center border border-gray-300 rounded-lg">
+                        <button
+                          onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                          className="p-3 hover:bg-gray-100 transition-colors"
+                        >
+                          <FaMinus className="w-3 h-3" />
+                        </button>
+                        <span className="px-4 py-2 font-medium">{quantity}</span>
+                        <button
+                          onClick={() => setQuantity(Math.min(product.stock_quantity, quantity + 1))}
+                          className="p-3 hover:bg-gray-100 transition-colors"
+                          disabled={quantity >= product.stock_quantity}
+                        >
+                          <FaPlus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="text-sm text-gray-500">
+                        {product.stock_quantity} items available
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-sm text-gray-500">
-                    {product.stock_quantity} items available
-                  </span>
-                </div>
-              </div>
 
-              {/* Actions */}
-              <div className="flex gap-4 mb-6">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  fullWidth
-                  onClick={handleAddToCart}
-                  loading={cartLoading}
-                  disabled={!inStock}
-                >
-                  <FaShoppingCart />
-                  {inStock ? 'Add to Cart' : 'Out of Stock'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => toggleWishlist(product)}
-                  className={isInWishlist(product.id) ? 'text-primary-600 border-primary-500' : ''}
-                >
-                  <FaHeart className={isInWishlist(product.id) ? 'fill-current' : ''} />
-                  {isInWishlist(product.id) ? 'In Wishlist' : 'Add to Wishlist'}
-                </Button>
-                <div className="relative" ref={shareMenuRef}>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={handleNativeShare}
-                    aria-expanded={shareMenuOpen}
-                    aria-haspopup="menu"
-                    aria-label="Share product"
-                  >
-                    <FaShare />
-                  </Button>
-                  {shareMenuOpen && (
-                    <div
-                      className="absolute right-0 mt-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg z-30 p-2"
-                      role="menu"
+                  {/* Actions */}
+                  <div className="flex flex-col gap-3 mb-6">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        className="sm:flex-1"
+                        onClick={handleBuyNow}
+                        loading={cartLoading}
+                        disabled={!inStock}
+                      >
+                        <FaBolt />
+                        {inStock ? 'Buy Now' : 'Out of Stock'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="sm:flex-1 border-primary-500 text-primary-600 hover:bg-primary-50"
+                        onClick={handleAddToCart}
+                        loading={cartLoading}
+                        disabled={!inStock}
+                      >
+                        <FaShoppingCart />
+                        {inStock ? 'Add to Cart' : 'Out of Stock'}
+                      </Button>
+                    </div>
+                    <div className="flex gap-3 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => toggleWishlist(product)}
+                      className={isInWishlist(product.id) ? 'text-primary-600 border-primary-500' : ''}
                     >
-                      <button
-                        type="button"
-                        onClick={() => openShareWindow('facebook')}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
-                        role="menuitem"
+                      <FaHeart className={isInWishlist(product.id) ? 'fill-current' : ''} />
+                      {isInWishlist(product.id) ? 'In Wishlist' : 'Add to Wishlist'}
+                    </Button>
+                    <div className="relative" ref={shareMenuRef}>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={handleNativeShare}
+                        aria-expanded={shareMenuOpen}
+                        aria-haspopup="menu"
+                        aria-label="Share product"
                       >
-                        <FaFacebookF className="text-blue-600" />
-                        Share to Facebook
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openShareWindow('messenger')}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
-                        role="menuitem"
-                      >
-                        <FaFacebookMessenger className="text-blue-500" />
-                        Share to Messenger
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openShareWindow('x')}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
-                        role="menuitem"
-                      >
-                        <FaTwitter className="text-gray-900" />
-                        Share to X
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openShareWindow('whatsapp')}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
-                        role="menuitem"
-                      >
-                        <FaWhatsapp className="text-green-600" />
-                        Share to WhatsApp
-                      </button>
-                      <button
-                        type="button"
-                        onClick={copyShareLink}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
-                        role="menuitem"
-                      >
-                        <FaLink className="text-gray-500" />
-                        Copy link
-                      </button>
-                      {copyMessage && (
-                        <p className="px-3 pt-1 text-xs text-green-600">{copyMessage}</p>
+                        <FaShare />
+                      </Button>
+                      {shareMenuOpen && (
+                        <div
+                          className="absolute right-0 mt-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg z-30 p-2"
+                          role="menu"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openShareWindow('facebook')}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
+                            role="menuitem"
+                          >
+                            <FaFacebookF className="text-blue-600" />
+                            Share to Facebook
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openShareWindow('messenger')}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
+                            role="menuitem"
+                          >
+                            <FaFacebookMessenger className="text-blue-500" />
+                            Share to Messenger
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openShareWindow('x')}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
+                            role="menuitem"
+                          >
+                            <FaTwitter className="text-gray-900" />
+                            Share to X
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openShareWindow('whatsapp')}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
+                            role="menuitem"
+                          >
+                            <FaWhatsapp className="text-green-600" />
+                            Share to WhatsApp
+                          </button>
+                          <button
+                            type="button"
+                            onClick={copyShareLink}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm text-gray-700 hover:bg-gray-50"
+                            role="menuitem"
+                          >
+                            <FaLink className="text-gray-500" />
+                            Copy link
+                          </button>
+                          {copyMessage && (
+                            <p className="px-3 pt-1 text-xs text-green-600">{copyMessage}</p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {isSupplier && (
+                <div className="mb-6">
+                  <Link to={`/supplier/products?edit=${product.id}`}>
+                    <Button variant="primary" size="lg">
+                      Manage in Seller Dashboard
+                    </Button>
+                  </Link>
                 </div>
-              </div>
+              )}
 
               {/* Delivery Info */}
               <div className="bg-gray-50 rounded-lg p-4 text-sm">

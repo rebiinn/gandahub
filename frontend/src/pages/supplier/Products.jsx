@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FaPlus, FaEdit, FaImage, FaSpinner, FaTrash } from 'react-icons/fa';
 import { productsAPI, storesAPI, categoriesAPI, uploadAPI } from '../../services/api';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT, thumbnailToPath } from '../../utils/imageUrl';
@@ -11,6 +12,7 @@ import Input from '../../components/common/Input';
 import Loading from '../../components/common/Loading';
 
 const SupplierProducts = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [store, setStore] = useState(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -24,6 +26,8 @@ const SupplierProducts = () => {
     short_description: '',
     price: '',
     sale_price: '',
+    is_on_sale: false,
+    is_featured: false,
     supply_price: '',
     stock_quantity: '',
     brand: '',
@@ -34,6 +38,7 @@ const SupplierProducts = () => {
   const fileInputRef = useRef(null);
   const [shadeRows, setShadeRows] = useState([{ name: '', hex: '', image: '' }]);
   const [uploadingShadeIndex, setUploadingShadeIndex] = useState(null);
+  const autoOpenedEditIdRef = useRef(null);
 
   const loadStoreAndProducts = async () => {
     try {
@@ -60,6 +65,19 @@ const SupplierProducts = () => {
     loadStoreAndProducts();
   }, []);
 
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId || products.length === 0) return;
+    if (autoOpenedEditIdRef.current === editId) return;
+    const target = products.find((p) => String(p.id) === String(editId));
+    if (!target) return;
+    autoOpenedEditIdRef.current = editId;
+    openModal(target);
+    const next = new URLSearchParams(searchParams);
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+  }, [products, searchParams, setSearchParams]);
+
   const openModal = (product = null) => {
     setPreviewImageUrl(null);
     if (product) {
@@ -71,6 +89,8 @@ const SupplierProducts = () => {
         short_description: product.short_description || '',
         price: product.price ?? '',
         sale_price: product.sale_price ?? '',
+        is_on_sale: Boolean(product.is_on_sale),
+        is_featured: Boolean(product.is_featured),
         supply_price: product.supply_price ?? '',
         stock_quantity: product.supplier_stock_quantity ?? product.stock_quantity ?? '',
         brand: product.brand || '',
@@ -92,6 +112,8 @@ const SupplierProducts = () => {
         short_description: '',
         price: '',
         sale_price: '',
+        is_on_sale: false,
+        is_featured: false,
         supply_price: '',
         stock_quantity: '0',
         brand: '',
@@ -184,6 +206,17 @@ const SupplierProducts = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const regularPrice = Number(formData.price);
+    const salePrice = formData.sale_price === '' ? null : Number(formData.sale_price);
+    if (formData.is_on_sale && salePrice === null) {
+      toast.error('Please set a sale price when Sale is enabled.');
+      return;
+    }
+    if (formData.is_on_sale && salePrice !== null && !Number.isNaN(regularPrice) && salePrice >= regularPrice) {
+      toast.error('Sale price must be lower than the regular price.');
+      return;
+    }
+
     const shadesPayload = shadeRows
       .filter((r) => r.name.trim())
       .map((r) => {
@@ -207,7 +240,9 @@ const SupplierProducts = () => {
       description: formData.description || undefined,
       short_description: formData.short_description || undefined,
       price: formData.price,
-      sale_price: formData.sale_price || undefined,
+      sale_price: formData.is_on_sale ? (formData.sale_price || undefined) : null,
+      is_on_sale: Boolean(formData.is_on_sale),
+      is_featured: Boolean(formData.is_featured),
       supply_price: formData.supply_price || undefined,
       stock_quantity: parseInt(formData.stock_quantity, 10) || 0,
       brand: formData.brand || undefined,
@@ -229,7 +264,15 @@ const SupplierProducts = () => {
       closeModal();
       loadStoreAndProducts();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Operation failed');
+      let message = error.response?.data?.message || 'Operation failed';
+      const validation = error.response?.data?.errors;
+      if (validation && typeof validation === 'object') {
+        const details = Object.values(validation).flat().filter(Boolean);
+        if (details.length > 0) {
+          message = details.join(' ');
+        }
+      }
+      toast.error(message);
     }
   };
 
@@ -245,6 +288,17 @@ const SupplierProducts = () => {
       loadStoreAndProducts();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Update failed');
+    }
+  };
+
+  const handleDelete = async (product) => {
+    if (!window.confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
+    try {
+      await productsAPI.supplierDelete(product.id);
+      toast.success('Product deleted');
+      loadStoreAndProducts();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete product');
     }
   };
 
@@ -320,7 +374,7 @@ const SupplierProducts = () => {
                       <td className="px-6 py-4 text-gray-600">{product.category?.name || '-'}</td>
                       <td className="px-6 py-4">
                         <p className="font-medium">{formatPrice(product.price)}</p>
-                        {product.sale_price && (
+                        {product.is_on_sale && product.sale_price && (
                           <p className="text-sm text-emerald-600">{formatPrice(product.sale_price)}</p>
                         )}
                       </td>
@@ -341,6 +395,13 @@ const SupplierProducts = () => {
                             title="Edit"
                           >
                             <FaEdit />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(product)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                            title="Delete"
+                          >
+                            <FaTrash />
                           </button>
                           <select
                             className="text-sm border border-gray-300 rounded-lg px-2 py-1"
@@ -438,9 +499,37 @@ const SupplierProducts = () => {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Input label="Price (₱)" type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} required />
-            <Input label="Sale Price (₱)" type="number" step="0.01" value={formData.sale_price} onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })} />
+            <Input
+              label="Sale Price (₱)"
+              type="number"
+              step="0.01"
+              value={formData.sale_price}
+              onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
+              disabled={!formData.is_on_sale}
+              helperText={!formData.is_on_sale ? 'Enable "Mark as Sale" to set sale price.' : undefined}
+            />
             <Input label="Supply price (₱)" type="number" step="0.01" value={formData.supply_price} onChange={(e) => setFormData({ ...formData, supply_price: e.target.value })} placeholder="Your cost" />
             <Input label="Available stock" type="number" min="0" value={formData.stock_quantity} onChange={(e) => setFormData({ ...formData, stock_quantity: normalizeQuantityInputString(e.target.value) })} required />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(formData.is_on_sale)}
+                onChange={(e) => setFormData({ ...formData, is_on_sale: e.target.checked })}
+                className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+              />
+              <span className="text-sm text-gray-700">Mark as Sale</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(formData.is_featured)}
+                onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
+                className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+              />
+              <span className="text-sm text-gray-700">Mark as Best Seller</span>
+            </label>
           </div>
 
           <Input label="Brand" value={formData.brand} onChange={(e) => setFormData({ ...formData, brand: e.target.value })} />
@@ -550,7 +639,7 @@ const SupplierProducts = () => {
             <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={3} className="w-full px-4 py-3 border border-gray-300 rounded-lg" />
           </div>
           <p className="text-sm text-gray-500">
-            New products start as &quot;Inactive&quot;. Admin will add them to the shop when ready.
+            New products are submitted for approval. Once admin approves, they automatically appear in the shop.
           </p>
 
           <div className="flex justify-end gap-4 pt-4">

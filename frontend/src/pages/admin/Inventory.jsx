@@ -1,44 +1,28 @@
-import { useState, useEffect } from 'react';
-import { FaExclamationTriangle, FaPlus, FaMinus, FaEdit, FaTruck, FaTrash, FaBoxOpen } from 'react-icons/fa';
-import { productsAPI, stockRequestsAPI, storesAPI, inventoryReceiptsAPI } from '../../services/api';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { FaExclamationTriangle, FaPlus, FaMinus, FaTrash, FaSearch, FaSync, FaBoxes, FaWarehouse } from 'react-icons/fa';
+import { productsAPI, storesAPI, inventoryReceiptsAPI } from '../../services/api';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../../utils/imageUrl';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
-import Input from '../../components/common/Input';
 import Loading from '../../components/common/Loading';
 import Badge from '../../components/common/Badge';
 import Pagination from '../../components/common/Pagination';
-import { intFromQuantityInput, intFromQuantityInputOrEmpty } from '../../utils/quantityInput';
 
 const Inventory = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
-  const [showModal, setShowModal] = useState(false);
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [stockChange, setStockChange] = useState({ quantity: 0, operation: 'add' });
-  const [requestQuantity, setRequestQuantity] = useState(10);
-  const [requestNotes, setRequestNotes] = useState('');
-  const [requestStoreId, setRequestStoreId] = useState('');
-  const [requestProductId, setRequestProductId] = useState('');
-  const [requestProducts, setRequestProducts] = useState([]);
   const [stores, setStores] = useState([]);
-  const [requesting, setRequesting] = useState(false);
   const [filter, setFilter] = useState('all');
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showReleaseModal, setShowReleaseModal] = useState(false);
-  const [releaseQuantity, setReleaseQuantity] = useState('');
-  const [releasing, setReleasing] = useState(false);
   const [receipts, setReceipts] = useState([]);
-
-  useEffect(() => {
-    fetchProducts();
-  }, [filter, selectedSupplierId]);
+  const [quickSearch, setQuickSearch] = useState('');
+  const [sortBy, setSortBy] = useState('stock_desc');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   useEffect(() => {
     const loadReceipts = async () => {
@@ -64,148 +48,41 @@ const Inventory = () => {
     fetchStores();
   }, []);
 
-  const fetchProducts = async (page = 1) => {
+  const fetchProducts = useCallback(async (page = 1, overrides = {}) => {
+    const activeFilter = overrides.filter ?? filter;
+    const activeSupplierId = overrides.selectedSupplierId ?? selectedSupplierId;
+
     try {
       setLoading(true);
-      const params = { page, active: true }; // Only products in the shop (admin-approved via Add to Shop)
-      if (selectedSupplierId) params.store_id = selectedSupplierId;
-      if (filter === 'low_stock') {
+      const params = { page, active: true, per_page: 50 }; // inventory grid should load enough rows for quick ops
+      if (activeSupplierId) params.store_id = activeSupplierId;
+      if (activeFilter === 'low_stock') {
         // Fetch all and filter client-side for low stock
       }
       const response = await productsAPI.getAll(params);
       let data = response.data.data || [];
       
-      if (filter === 'low_stock') {
+      if (activeFilter === 'low_stock') {
         data = data.filter(p => p.stock_quantity <= p.low_stock_threshold && p.stock_quantity > 0);
-      } else if (filter === 'out_of_stock') {
+      } else if (activeFilter === 'out_of_stock') {
         data = data.filter(p => p.stock_quantity === 0);
       }
       
       setProducts(data);
       setMeta(response.data.meta || { current_page: 1, last_page: 1 });
       setSelectedIds(new Set()); // Clear selection when list changes
+      setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       console.error('Failed to fetch products:', error);
+      toast.error('Failed to fetch inventory products');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, selectedSupplierId]);
 
-  const openStockModal = (product) => {
-    setSelectedProduct(product);
-    setStockChange({ quantity: 0, operation: 'add' });
-    setShowModal(true);
-  };
-
-  const openReleaseModal = (product) => {
-    setSelectedProduct(product);
-    setReleaseQuantity('');
-    setShowReleaseModal(true);
-  };
-
-  const handleReleaseToShop = async () => {
-    const qty = releaseQuantity === '' ? 0 : Number(releaseQuantity);
-    if (!selectedProduct || qty < 1) {
-      toast.error('Enter a valid quantity');
-      return;
-    }
-    const warehouse = selectedProduct.inventory_stock ?? 0;
-    if (qty > warehouse) {
-      toast.error(`Cannot release more than warehouse stock (${warehouse})`);
-      return;
-    }
-    try {
-      setReleasing(true);
-      await productsAPI.releaseStock(selectedProduct.id, qty);
-      toast.success('Stock released to shop');
-      setShowReleaseModal(false);
-      fetchProducts(meta.current_page);
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to release stock');
-    } finally {
-      setReleasing(false);
-    }
-  };
-
-  const loadRequestProducts = async (storeId) => {
-    if (!storeId) {
-      setRequestProducts([]);
-      return;
-    }
-    try {
-      const res = await productsAPI.getAll({
-        store_id: storeId,
-        active: '', // include both active and inactive products for that supplier
-        per_page: 100,
-      });
-      setRequestProducts(res.data.data || []);
-    } catch (error) {
-      console.error('Failed to load supplier products for request modal:', error);
-      setRequestProducts([]);
-    }
-  };
-
-  const openRequestModal = (product = null) => {
-    setSelectedProduct(product);
-    setRequestProductId(product?.id || '');
-    setRequestQuantity(product?.low_stock_threshold || 10);
-    setRequestNotes('');
-    const storeId = selectedSupplierId || product?.store_id || '';
-    setRequestStoreId(storeId);
-    loadRequestProducts(storeId);
-    setShowRequestModal(true);
-  };
-
-  const handleStockRequest = async (e) => {
-    e.preventDefault();
-    const productId = selectedProduct?.id || requestProductId;
-    if (!productId || requestQuantity < 1) {
-      toast.error('Select a product and enter a valid quantity');
-      return;
-    }
-    if (!requestStoreId) {
-      toast.error('Please select a supplier');
-      return;
-    }
-    try {
-      setRequesting(true);
-      await stockRequestsAPI.create({
-        product_id: productId,
-        store_id: requestStoreId,
-        quantity_requested: requestQuantity,
-        notes: requestNotes || undefined,
-      });
-      toast.success('Request sent to supplier');
-      setShowRequestModal(false);
-      setSelectedProduct(null);
-      setRequestProductId('');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to send request');
-    } finally {
-      setRequesting(false);
-      setShowRequestModal(false);
-    }
-  };
-
-  const handleStockUpdate = async () => {
-    if (stockChange.quantity < 0 && stockChange.operation !== 'set') {
-      toast.error('Please enter a valid quantity');
-      return;
-    }
-    if (stockChange.operation !== 'set' && stockChange.quantity === 0) {
-      toast.error('Please enter a quantity');
-      return;
-    }
-    try {
-      await productsAPI.updateWarehouseStock(selectedProduct.id, stockChange);
-      toast.success('Warehouse stock updated');
-      setShowModal(false);
-      fetchProducts(meta.current_page);
-    } catch (error) {
-      const message = error.response?.data?.message || 'Failed to update warehouse stock';
-      toast.error(message);
-    }
-  };
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const getStockBadge = (product) => {
     if (product.stock_quantity === 0) {
@@ -233,12 +110,73 @@ const Inventory = () => {
     });
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === products.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(products.map((p) => p.id)));
+  const visibleProducts = useMemo(() => {
+    const needle = quickSearch.trim().toLowerCase();
+    let list = products;
+
+    if (needle) {
+      list = list.filter((product) => {
+        const haystack = [
+          product.name,
+          product.sku,
+          product.brand,
+          product.store?.name,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(needle);
+      });
     }
+
+    const next = [...list];
+    next.sort((a, b) => {
+      if (sortBy === 'name_asc') return (a.name || '').localeCompare(b.name || '');
+      if (sortBy === 'name_desc') return (b.name || '').localeCompare(a.name || '');
+      if (sortBy === 'stock_asc') return Number(a.stock_quantity || 0) - Number(b.stock_quantity || 0);
+      if (sortBy === 'stock_desc') return Number(b.stock_quantity || 0) - Number(a.stock_quantity || 0);
+      if (sortBy === 'warehouse_desc') return Number(b.inventory_stock || 0) - Number(a.inventory_stock || 0);
+      if (sortBy === 'warehouse_asc') return Number(a.inventory_stock || 0) - Number(b.inventory_stock || 0);
+
+      const aRisk = Number(a.stock_quantity || 0) - Number(a.low_stock_threshold || 0);
+      const bRisk = Number(b.stock_quantity || 0) - Number(b.low_stock_threshold || 0);
+      return aRisk - bRisk;
+    });
+
+    return next;
+  }, [products, quickSearch, sortBy]);
+
+  const summary = useMemo(() => {
+    const totalInShop = visibleProducts.reduce((sum, p) => sum + Number(p.stock_quantity || 0), 0);
+    const totalWarehouse = visibleProducts.reduce((sum, p) => sum + Number(p.inventory_stock || 0), 0);
+    const lowStockCount = visibleProducts.filter((p) => p.stock_quantity > 0 && p.stock_quantity <= p.low_stock_threshold).length;
+    const outOfStockCount = visibleProducts.filter((p) => p.stock_quantity === 0).length;
+    const healthyCount = visibleProducts.filter((p) => p.stock_quantity > p.low_stock_threshold).length;
+
+    return {
+      totalProducts: visibleProducts.length,
+      totalInShop,
+      totalWarehouse,
+      lowStockCount,
+      outOfStockCount,
+      healthyCount,
+    };
+  }, [visibleProducts]);
+
+  const allVisibleSelected = useMemo(() => {
+    return visibleProducts.length > 0 && visibleProducts.every((p) => selectedIds.has(p.id));
+  }, [visibleProducts, selectedIds]);
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleProducts.forEach((p) => next.delete(p.id));
+      } else {
+        visibleProducts.forEach((p) => next.add(p.id));
+      }
+      return next;
+    });
   };
 
   const handleBulkDelete = async () => {
@@ -261,6 +199,18 @@ const Inventory = () => {
     if (selectedIds.size > 0) setShowDeleteModal(true);
   };
 
+  const clearFilters = () => {
+    const alreadyDefault = filter === 'all' && selectedSupplierId === '';
+    setFilter('all');
+    setSelectedSupplierId('');
+    setQuickSearch('');
+    setSortBy('stock_desc');
+    setSelectedIds(new Set());
+    if (alreadyDefault) {
+      fetchProducts(1, { filter: 'all', selectedSupplierId: '' });
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -268,7 +218,7 @@ const Inventory = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm p-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -276,7 +226,7 @@ const Inventory = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-800">
-                {products.filter(p => p.stock_quantity > p.low_stock_threshold).length}
+                {summary.healthyCount}
               </p>
               <p className="text-sm text-gray-500">In Stock</p>
             </div>
@@ -289,7 +239,7 @@ const Inventory = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-800">
-                {products.filter(p => p.stock_quantity <= p.low_stock_threshold && p.stock_quantity > 0).length}
+                {summary.lowStockCount}
               </p>
               <p className="text-sm text-gray-500">Low Stock</p>
             </div>
@@ -302,9 +252,31 @@ const Inventory = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-800">
-                {products.filter(p => p.stock_quantity === 0).length}
+                {summary.outOfStockCount}
               </p>
               <p className="text-sm text-gray-500">Out of Stock</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+              <FaBoxes className="w-5 h-5 text-primary-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-800">{summary.totalInShop}</p>
+              <p className="text-sm text-gray-500">Units In Shop</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+              <FaWarehouse className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-800">{summary.totalWarehouse}</p>
+              <p className="text-sm text-gray-500">Units In Warehouse</p>
             </div>
           </div>
         </div>
@@ -312,7 +284,40 @@ const Inventory = () => {
 
       {/* Supplier & Filter */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="relative min-w-[260px] flex-grow">
+              <input
+                type="text"
+                value={quickSearch}
+                onChange={(e) => setQuickSearch(e.target.value)}
+                placeholder="Quick search: product, SKU, brand, supplier..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+              />
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500 min-w-[220px]"
+            >
+              <option value="stock_desc">Sort: In-shop stock (high to low)</option>
+              <option value="stock_asc">Sort: In-shop stock (low to high)</option>
+              <option value="warehouse_desc">Sort: Warehouse (high to low)</option>
+              <option value="warehouse_asc">Sort: Warehouse (low to high)</option>
+              <option value="name_asc">Sort: Name (A-Z)</option>
+              <option value="name_desc">Sort: Name (Z-A)</option>
+              <option value="risk_desc">Sort: At risk first</option>
+            </select>
+            <Button type="button" variant="outline" onClick={() => fetchProducts(meta.current_page)}>
+              <FaSync />
+              Refresh
+            </Button>
+            <Button type="button" variant="outline" onClick={clearFilters}>
+              Clear
+            </Button>
+          </div>
+
           {/* Supplier selection at top */}
           <div className="flex items-center gap-2 flex-wrap">
             <label className="text-sm font-medium text-gray-700">Supplier:</label>
@@ -329,14 +334,14 @@ const Inventory = () => {
                 <option key={store.id} value={store.id}>{store.name}</option>
               ))}
             </select>
-            {selectedSupplierId && (
-              <Button variant="primary" onClick={() => openRequestModal()} className="flex items-center gap-2">
-                <FaTruck />
-                Request stock
-              </Button>
-            )}
+            <p className="text-xs text-gray-500 ml-2">
+              Showing {summary.totalProducts} product(s)
+            </p>
+            <p className="text-xs text-gray-500 ml-auto">
+              Last updated: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('en-PH') : '—'}
+            </p>
           </div>
-          <div className="flex gap-2 sm:ml-auto">
+          <div className="flex gap-2">
             {[
               { value: 'all', label: 'All Products' },
               { value: 'low_stock', label: 'Low Stock' },
@@ -392,7 +397,7 @@ const Inventory = () => {
                   <th className="px-4 py-3 w-10">
                     <input
                       type="checkbox"
-                      checked={products.length > 0 && selectedIds.size === products.length}
+                      checked={allVisibleSelected}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
@@ -404,11 +409,16 @@ const Inventory = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Shop</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Threshold</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {products.map((product) => (
+                {visibleProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
+                      No products match your current inventory filters.
+                    </td>
+                  </tr>
+                ) : visibleProducts.map((product) => (
                   <tr key={product.id} className={`hover:bg-gray-50 ${selectedIds.has(product.id) ? 'bg-primary-50' : ''} ${product.stock_quantity <= product.low_stock_threshold ? 'bg-yellow-50' : ''} ${product.stock_quantity === 0 ? 'bg-red-50' : ''}`}>
                     <td className="px-4 py-4 w-10">
                       <input
@@ -431,7 +441,10 @@ const Inventory = () => {
                             }
                           }}
                         />
-                        <p className="font-medium text-gray-800">{product.name}</p>
+                        <div>
+                          <p className="font-medium text-gray-800">{product.name}</p>
+                          <p className="text-xs text-gray-500">{product.store?.name || 'Unknown supplier'}</p>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{product.sku}</td>
@@ -451,24 +464,6 @@ const Inventory = () => {
                     </td>
                     <td className="px-6 py-4 text-gray-600">{product.low_stock_threshold}</td>
                     <td className="px-6 py-4">{getStockBadge(product)}</td>
-                    <td className="px-6 py-4 flex items-center gap-1">
-                      {(product.inventory_stock ?? 0) > 0 && (
-                        <button
-                          onClick={() => openReleaseModal(product)}
-                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-                          title="Release to shop"
-                        >
-                          <FaBoxOpen />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => openStockModal(product)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                        title="Adjust warehouse"
-                      >
-                        <FaEdit />
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -489,9 +484,9 @@ const Inventory = () => {
       {/* Inventory records (stock receipts from supplier approvals) */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-6">
         <h2 className="px-6 py-4 font-semibold text-gray-800 border-b">Recent stock receipts</h2>
-        <p className="px-6 py-2 text-sm text-gray-500">Approved supplier requests create these records (product, supplier, quantity, stocked date).</p>
+        <p className="px-6 py-2 text-sm text-gray-500">Historical warehouse receipt records (product, supplier, quantity, stocked date).</p>
         {receipts.length === 0 ? (
-          <p className="p-6 text-gray-500 text-sm">No stock receipts yet. Approved requests will appear here.</p>
+          <p className="p-6 text-gray-500 text-sm">No stock receipts yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -520,66 +515,6 @@ const Inventory = () => {
         )}
       </div>
 
-      {/* Request from Supplier Modal */}
-      <Modal
-        isOpen={showRequestModal}
-        onClose={() => setShowRequestModal(false)}
-        title="Request Stock from Supplier"
-      >
-        {requestStoreId && (
-          <form onSubmit={handleStockRequest} className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm font-medium text-gray-700">Supplier</p>
-              <p className="text-gray-900 font-medium">{stores.find(s => s.id == requestStoreId)?.name || '-'}</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Select Product</label>
-              <select
-                value={requestProductId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setRequestProductId(id);
-                  const p = requestProducts.find(pr => pr.id == id);
-                  if (p) setRequestQuantity(p.low_stock_threshold || 10);
-                }}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
-                required
-              >
-                <option value="">Choose product...</option>
-                {requestProducts.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} (SKU: {p.sku}, Available: {p.supplier_stock_quantity ?? 0})</option>
-                ))}
-              </select>
-              {requestProducts.length === 0 && (
-                <p className="text-sm text-amber-600 mt-1">No products from this supplier. Select a different supplier.</p>
-              )}
-            </div>
-            <Input
-              label="Quantity needed"
-              type="number"
-              min="1"
-              value={requestQuantity}
-              onChange={(e) => setRequestQuantity(intFromQuantityInput(e.target.value))}
-              required
-            />
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes (optional)</label>
-              <textarea
-                value={requestNotes}
-                onChange={(e) => setRequestNotes(e.target.value)}
-                rows={2}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg"
-                placeholder="e.g. Urgent, need by Friday"
-              />
-            </div>
-            <div className="flex justify-end gap-4 pt-4">
-              <Button type="button" variant="outline" onClick={() => setShowRequestModal(false)}>Cancel</Button>
-              <Button type="submit" variant="primary" disabled={requesting || requestProducts.length === 0}>Send Request</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
       {/* Bulk Delete Confirmation Modal */}
       <Modal
         isOpen={showDeleteModal}
@@ -597,129 +532,6 @@ const Inventory = () => {
             {deleting ? 'Deleting...' : 'Delete'}
           </Button>
         </div>
-      </Modal>
-
-      {/* Release to Shop Modal */}
-      <Modal
-        isOpen={showReleaseModal}
-        onClose={() => setShowReleaseModal(false)}
-        title="Release to Shop"
-      >
-        {selectedProduct && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg">
-              <img
-                src={toAbsoluteImageUrl(selectedProduct.thumbnail)}
-                alt={selectedProduct.name}
-                className="w-16 h-16 object-cover rounded-lg"
-                onError={(e) => {
-                  if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
-                    e.target.dataset.failed = '1';
-                    e.target.src = PLACEHOLDER_PRODUCT;
-                  }
-                }}
-              />
-              <div>
-                <p className="font-medium text-gray-800">{selectedProduct.name}</p>
-                <p className="text-sm text-gray-500">Warehouse: {selectedProduct.inventory_stock ?? 0} → In shop: {selectedProduct.stock_quantity}</p>
-              </div>
-            </div>
-            <Input
-              label="Quantity to release to shop"
-              type="number"
-              min="1"
-              max={selectedProduct.inventory_stock ?? 0}
-              value={releaseQuantity}
-              onChange={(e) => setReleaseQuantity(intFromQuantityInputOrEmpty(e.target.value))}
-            />
-            <div className="bg-green-50 p-3 rounded-lg text-sm text-green-800">
-              {releaseQuantity === '' ? (
-                <p>Enter a quantity to see warehouse and shop levels after release.</p>
-              ) : (
-                <p>
-                  After release: Warehouse {((selectedProduct.inventory_stock ?? 0) - Number(releaseQuantity))}, In shop {(selectedProduct.stock_quantity ?? 0) + Number(releaseQuantity)}
-                </p>
-              )}
-            </div>
-            <div className="flex justify-end gap-4 pt-4">
-              <Button variant="outline" onClick={() => setShowReleaseModal(false)}>Cancel</Button>
-              <Button
-                variant="primary"
-                onClick={handleReleaseToShop}
-                disabled={releasing || releaseQuantity === '' || Number(releaseQuantity) < 1}
-              >
-                {releasing ? 'Releasing...' : 'Release to Shop'}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Adjust Warehouse Stock Modal */}
-      <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Adjust Warehouse Stock"
-      >
-        {selectedProduct && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg">
-              <img
-                src={toAbsoluteImageUrl(selectedProduct.thumbnail)}
-                alt={selectedProduct.name}
-                className="w-16 h-16 object-cover rounded-lg"
-                onError={(e) => {
-                  if (e.target.src !== PLACEHOLDER_PRODUCT && !e.target.dataset.failed) {
-                    e.target.dataset.failed = '1';
-                    e.target.src = PLACEHOLDER_PRODUCT;
-                  }
-                }}
-              />
-              <div>
-                <p className="font-medium text-gray-800">{selectedProduct.name}</p>
-                <p className="text-sm text-gray-500">Warehouse: {selectedProduct.inventory_stock ?? 0} · In shop: {selectedProduct.stock_quantity}</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Operation</label>
-              <select
-                value={stockChange.operation}
-                onChange={(e) => setStockChange({ ...stockChange, operation: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
-              >
-                <option value="add">Add to warehouse</option>
-                <option value="subtract">Remove from warehouse</option>
-                <option value="set">Set warehouse stock</option>
-              </select>
-            </div>
-
-            <Input
-              label="Quantity"
-              type="number"
-              min="0"
-              value={stockChange.quantity}
-              onChange={(e) => setStockChange({ ...stockChange, quantity: intFromQuantityInput(e.target.value) })}
-            />
-
-            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
-              {stockChange.operation === 'add' && (
-                <p>Warehouse will be: {(selectedProduct.inventory_stock ?? 0) + stockChange.quantity}</p>
-              )}
-              {stockChange.operation === 'subtract' && (
-                <p>Warehouse will be: {Math.max(0, (selectedProduct.inventory_stock ?? 0) - stockChange.quantity)}</p>
-              )}
-              {stockChange.operation === 'set' && (
-                <p>Warehouse will be set to: {stockChange.quantity}</p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-4 pt-4">
-              <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button variant="primary" onClick={handleStockUpdate}>Update Warehouse</Button>
-            </div>
-          </div>
-        )}
       </Modal>
     </div>
   );

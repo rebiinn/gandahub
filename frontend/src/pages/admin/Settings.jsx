@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
 import { FaSave, FaSync, FaDatabase, FaServer } from 'react-icons/fa';
-import { settingsAPI, uploadAPI } from '../../services/api';
+import { settingsAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Loading from '../../components/common/Loading';
-import { toAbsoluteImageUrl } from '../../utils/imageUrl';
 
 const Settings = () => {
   const [, setSettings] = useState([]);
   const [systemInfo, setSystemInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingGcashQr, setUploadingGcashQr] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
   const [formData, setFormData] = useState({});
 
@@ -53,7 +51,14 @@ const Settings = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const settingsArray = Object.entries(formData).map(([key, value]) => ({
+      const normalized = { ...formData };
+      const rawRate = Number(normalized.marketplace_commission_rate);
+      if (Number.isFinite(rawRate)) {
+        const clamped = Math.max(0, Math.min(rawRate, 1));
+        normalized.marketplace_commission_rate = clamped.toString();
+      }
+
+      const settingsArray = Object.entries(normalized).map(([key, value]) => ({
         key,
         value,
       }));
@@ -67,12 +72,34 @@ const Settings = () => {
     }
   };
 
-  const handleClearCache = async () => {
+  const handleClearAllData = async () => {
+    const typed = window.prompt(
+      'This will permanently delete products, orders, deliveries, and user data. Type RESET ALL DATA to continue.'
+    );
+
+    if (typed === null) return;
+
+    const confirmation = typed.trim();
+    if (confirmation !== 'RESET ALL DATA') {
+      toast.error('Reset cancelled. Confirmation text did not match.');
+      return;
+    }
+
+    const finalConfirm = window.confirm(
+      'Final confirmation: this action cannot be undone. Proceed with full data reset?'
+    );
+
+    if (!finalConfirm) return;
+
     try {
-      await settingsAPI.clearCache();
-      toast.success('Cache cleared successfully');
+      await settingsAPI.clearAllData(confirmation);
+      toast.success('All data has been reset. Reloading dashboard...');
+      setTimeout(() => {
+        window.location.href = '/admin';
+      }, 1000);
     } catch (error) {
-      toast.error('Failed to clear cache');
+      const message = error.response?.data?.message || 'Failed to reset all data';
+      toast.error(message);
     }
   };
 
@@ -82,41 +109,6 @@ const Settings = () => {
       toast.success('Backup created successfully');
     } catch (error) {
       toast.error('Failed to create backup');
-    }
-  };
-
-  const handleGcashQrUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      toast.error('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
-      e.target.value = '';
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size must be less than 5MB');
-      e.target.value = '';
-      return;
-    }
-
-    try {
-      setUploadingGcashQr(true);
-      const response = await uploadAPI.uploadImage(file, 'settings');
-      const imageUrl = response.data.data?.url ?? response.data.data;
-      if (!imageUrl || typeof imageUrl !== 'string') {
-        toast.error('Upload succeeded but no image URL returned');
-        return;
-      }
-      setFormData((prev) => ({ ...prev, gcash_qr_image_url: imageUrl }));
-      toast.success('GCash QR uploaded successfully');
-    } catch (error) {
-      const msg = error.response?.data?.message || error.message || 'Upload failed';
-      toast.error(typeof msg === 'string' ? msg : 'Failed to upload GCash QR');
-    } finally {
-      setUploadingGcashQr(false);
-      e.target.value = '';
     }
   };
 
@@ -138,16 +130,13 @@ const Settings = () => {
     ],
     payment: [
       { key: 'currency', label: 'Currency', type: 'text', default: 'PHP' },
+      { key: 'marketplace_commission_rate', label: 'Marketplace Commission Rate (decimal)', type: 'number', default: '0.05' },
       { key: 'enable_cod', label: 'Enable Cash on Delivery', type: 'checkbox', default: 'true' },
       { key: 'enable_gcash', label: 'Enable GCash', type: 'checkbox', default: 'true' },
-      { key: 'gcash_receiver_name', label: 'GCash Receiver Name', type: 'text', default: 'Ganda Hub Cosmetics' },
-      { key: 'gcash_receiver_number', label: 'GCash Receiver Number', type: 'text', default: '' },
-      { key: 'gcash_qr_image_url', label: 'GCash QR Image URL', type: 'text', default: '' },
     ],
     shipping: [
       { key: 'free_shipping_threshold', label: 'Free Shipping Threshold (PHP)', type: 'number', default: '1500' },
       { key: 'default_shipping_fee', label: 'Default Shipping Fee (PHP)', type: 'number', default: '150' },
-      { key: 'shipping_areas', label: 'Shipping Areas', type: 'textarea', default: '' },
     ],
     email: [
       { key: 'mail_from_name', label: 'From Name', type: 'text', default: 'Ganda Hub Cosmetics' },
@@ -201,39 +190,7 @@ const Settings = () => {
               <div className="space-y-4">
                 {defaultSettings[activeTab]?.map((setting) => (
                   <div key={setting.key}>
-                    {setting.key === 'gcash_qr_image_url' ? (
-                      <div>
-                        <Input
-                          label={setting.label}
-                          type="text"
-                          value={formData[setting.key] || setting.default}
-                          onChange={(e) => setFormData({ ...formData, [setting.key]: e.target.value })}
-                        />
-                        <div className="mt-2 flex items-center gap-3">
-                          <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm">
-                            {uploadingGcashQr ? 'Uploading...' : 'Select Image'}
-                            <input
-                              type="file"
-                              accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-                              className="hidden"
-                              onChange={handleGcashQrUpload}
-                              disabled={uploadingGcashQr}
-                            />
-                          </label>
-                          <span className="text-xs text-gray-500">Max 5MB</span>
-                        </div>
-                        {!!formData[setting.key] && (
-                          <div className="mt-3">
-                            <p className="text-xs text-gray-500 mb-2">QR Preview</p>
-                            <img
-                              src={toAbsoluteImageUrl(formData[setting.key], formData[setting.key])}
-                              alt="GCash QR Preview"
-                              className="w-40 h-40 object-contain border border-gray-200 rounded-lg bg-white p-1"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ) : setting.type === 'checkbox' ? (
+                    {setting.type === 'checkbox' ? (
                       <label className="flex items-center gap-3 cursor-pointer">
                         <input
                           type="checkbox"
@@ -308,14 +265,15 @@ const Settings = () => {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="p-4 border border-gray-200 rounded-lg">
                     <div className="flex items-center gap-3 mb-2">
-                      <FaSync className="text-blue-500" />
-                      <h3 className="font-medium text-gray-800">Clear Cache</h3>
+                      <FaSync className="text-red-500" />
+                      <h3 className="font-medium text-gray-800">Clear All Data</h3>
                     </div>
                     <p className="text-sm text-gray-500 mb-4">
-                      Clear application cache to refresh configurations
+                      Permanently reset platform data (products, users, orders, deliveries, and related records).
+                      The current admin account is kept for access.
                     </p>
-                    <Button variant="outline" size="sm" onClick={handleClearCache}>
-                      Clear Cache
+                    <Button variant="danger" size="sm" onClick={handleClearAllData}>
+                      Clear All Data
                     </Button>
                   </div>
                   

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaImage, FaSpinner } from 'react-icons/fa';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaImage, FaSpinner, FaCheck, FaSync, FaBoxes, FaCheckCircle, FaTag } from 'react-icons/fa';
 import { productsAPI, categoriesAPI, storesAPI, uploadAPI } from '../../services/api';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT, thumbnailToPath } from '../../utils/imageUrl';
 import { getProductShades, shadeHexForColorInput } from '../../utils/productShades';
@@ -19,6 +19,13 @@ const Products = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [search, setSearch] = useState('');
+  const [quickSearch, setQuickSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [storeFilter, setStoreFilter] = useState('');
+  const [stockFilter, setStockFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [viewTab, setViewTab] = useState('active'); // active | pending
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
   const [formData, setFormData] = useState({
     name: '',
@@ -45,54 +52,136 @@ const Products = () => {
   // Select from Inventory modal (add to shop)
   const [showSelectModal, setShowSelectModal] = useState(false);
   const [inventoryProducts, setInventoryProducts] = useState([]);
-  const [inventoryMeta, setInventoryMeta] = useState({ current_page: 1, last_page: 1 });
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventorySearch, setInventorySearch] = useState('');
   const [selectedForShop, setSelectedForShop] = useState(new Set());
   const [addingToShop, setAddingToShop] = useState(false);
 
-  useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-    fetchStores();
-  }, []);
-
-  const fetchStores = async () => {
+  const fetchStores = useCallback(async () => {
     try {
       const response = await storesAPI.getList();
       setStores(response.data.data || []);
     } catch (error) {
       console.error('Failed to fetch stores:', error);
     }
-  };
+  }, []);
 
-  const fetchProducts = async (page = 1) => {
+  const fetchProducts = useCallback(async (page = 1, searchTerm = '') => {
     try {
       setLoading(true);
-      const params = { page, active: true }; // Only products in the shop (admin controls via Add to Shop)
-      if (search) params.search = search;
-      const response = await productsAPI.getAll(params);
+      const params = { page };
+      if (searchTerm) params.search = searchTerm;
+      const response =
+        viewTab === 'pending'
+          ? await productsAPI.getPendingApprovals(params)
+          : await productsAPI.getAll({ ...params, active: true });
       setProducts(response.data.data || []);
       setMeta(response.data.meta || { current_page: 1, last_page: 1 });
+      setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       console.error('Failed to fetch products:', error);
+      toast.error('Failed to fetch products');
     } finally {
       setLoading(false);
     }
-  };
+  }, [viewTab]);
 
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
       const response = await categoriesAPI.getAll({ active: true });
       setCategories(response.data.data || []);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProducts(1, '');
+    fetchCategories();
+    fetchStores();
+  }, [viewTab, fetchProducts, fetchCategories, fetchStores]);
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchProducts();
+    fetchProducts(1, search);
+  };
+
+  const getStockValue = useCallback((product) =>
+    viewTab === 'pending' ? Number(product.supplier_stock_quantity ?? 0) : Number(product.stock_quantity ?? 0), [viewTab]);
+
+  const filteredProducts = useMemo(() => {
+    const needle = quickSearch.trim().toLowerCase();
+    let list = products;
+
+    if (categoryFilter) {
+      list = list.filter((p) => String(p.category_id ?? '') === String(categoryFilter));
+    }
+    if (storeFilter) {
+      list = list.filter((p) => String(p.store_id ?? '') === String(storeFilter));
+    }
+    if (stockFilter !== 'all') {
+      if (stockFilter === 'out') list = list.filter((p) => getStockValue(p) === 0);
+      if (stockFilter === 'low') list = list.filter((p) => getStockValue(p) > 0 && getStockValue(p) <= 10);
+      if (stockFilter === 'healthy') list = list.filter((p) => getStockValue(p) > 10);
+    }
+    if (needle) {
+      list = list.filter((product) => {
+        const haystack = [
+          product.name,
+          product.sku,
+          product.brand,
+          product.category?.name,
+          product.store?.name,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(needle);
+      });
+    }
+
+    const next = [...list];
+    next.sort((a, b) => {
+      if (sortBy === 'name_asc') return (a.name || '').localeCompare(b.name || '');
+      if (sortBy === 'name_desc') return (b.name || '').localeCompare(a.name || '');
+      if (sortBy === 'stock_desc') return getStockValue(b) - getStockValue(a);
+      if (sortBy === 'stock_asc') return getStockValue(a) - getStockValue(b);
+      if (sortBy === 'price_desc') return Number(b.price || 0) - Number(a.price || 0);
+      if (sortBy === 'price_asc') return Number(a.price || 0) - Number(b.price || 0);
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+
+    return next;
+  }, [products, quickSearch, categoryFilter, storeFilter, stockFilter, sortBy, getStockValue]);
+
+  const summary = useMemo(() => {
+    const total = filteredProducts.length;
+    const onSale = filteredProducts.filter((p) => Boolean(p.sale_price) || Boolean(p.is_on_sale)).length;
+    const featured = filteredProducts.filter((p) => Boolean(p.is_featured)).length;
+    const totalStock = filteredProducts.reduce((sum, p) => sum + getStockValue(p), 0);
+    const inStockCount = filteredProducts.filter((p) => getStockValue(p) > 0).length;
+
+    return { total, onSale, featured, totalStock, inStockCount };
+  }, [filteredProducts, getStockValue]);
+
+  const clearFilters = () => {
+    setQuickSearch('');
+    setCategoryFilter('');
+    setStoreFilter('');
+    setStockFilter('all');
+    setSortBy('newest');
+    setSearch('');
+    fetchProducts(1, '');
+  };
+
+  const handleApproveListing = async (id) => {
+    try {
+      await productsAPI.approveListing(id);
+      toast.success('Product approved and now visible in shop');
+      fetchProducts(meta.current_page, search);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to approve product');
+    }
   };
 
   const openSelectModal = () => {
@@ -110,7 +199,6 @@ const Products = () => {
       if (q) params.search = q;
       const response = await productsAPI.getAll(params);
       setInventoryProducts(response.data.data || []);
-      setInventoryMeta(response.data.meta || { current_page: 1, last_page: 1 });
     } catch (error) {
       console.error('Failed to fetch inventory products:', error);
       toast.error('Failed to load inventory');
@@ -147,7 +235,7 @@ const Products = () => {
       toast.success(`${selectedForShop.size} product(s) added to shop`);
       setShowSelectModal(false);
       setSelectedForShop(new Set());
-      fetchProducts(meta.current_page);
+      fetchProducts(meta.current_page, search);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add products to shop');
     } finally {
@@ -325,7 +413,7 @@ const Products = () => {
         await productsAPI.create(payload);
         toast.success('Product created successfully');
         closeModal();
-        fetchProducts(meta.current_page);
+        fetchProducts(meta.current_page, search);
       }
     } catch (error) {
       let message = 'Operation failed';
@@ -361,7 +449,7 @@ const Products = () => {
     try {
       await productsAPI.delete(id);
       toast.success('Product deleted successfully');
-      fetchProducts(meta.current_page);
+      fetchProducts(meta.current_page, search);
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to delete product';
       toast.error(message);
@@ -377,30 +465,164 @@ const Products = () => {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Products</h1>
-        <p className="text-sm text-gray-500">
-          View-only list of products currently visible in the shop.
-        </p>
+      <div className="flex items-center justify-between mb-6 gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Products</h1>
+          <p className="text-sm text-gray-500">
+            {viewTab === 'pending'
+              ? 'Supplier products waiting for listing approval.'
+              : 'Products currently visible in the shop.'}
+          </p>
+        </div>
+        <Button type="button" variant="primary" onClick={openSelectModal}>
+          <FaPlus />
+          Add from Inventory
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-3 mb-6">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setViewTab('active')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              viewTab === 'active' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            In Shop
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewTab('pending')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              viewTab === 'pending' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Pending Approval
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaBoxes />
+            Total Products
+          </div>
+          <p className="text-2xl font-bold text-gray-800 mt-1">{summary.total}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaCheckCircle />
+            In Stock
+          </div>
+          <p className="text-2xl font-bold text-green-600 mt-1">{summary.inStockCount}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaBoxes />
+            Total Units
+          </div>
+          <p className="text-2xl font-bold text-primary-600 mt-1">{summary.totalStock}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaTag />
+            On Sale
+          </div>
+          <p className="text-2xl font-bold text-amber-600 mt-1">{summary.onSale}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaCheck />
+            Featured
+          </div>
+          <p className="text-2xl font-bold text-purple-600 mt-1">{summary.featured}</p>
+        </div>
       </div>
 
       {/* Search */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-        <form onSubmit={handleSearch} className="flex gap-4">
-          <div className="relative flex-grow">
+        <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full lg:flex-[1_1_260px]">
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products..."
+              value={quickSearch}
+              onChange={(e) => setQuickSearch(e.target.value)}
+              placeholder="Quick search on this page..."
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
             />
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
-          <Button type="submit" variant="primary">
-            Search
-          </Button>
+          <div className="relative w-full lg:flex-[1_1_260px]">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Server search (name, SKU, brand)..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+            />
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          </div>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full sm:w-auto sm:min-w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+          >
+            <option value="">All categories</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+          <select
+            value={storeFilter}
+            onChange={(e) => setStoreFilter(e.target.value)}
+            className="w-full sm:w-auto sm:min-w-[180px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+          >
+            <option value="">All stores</option>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
+          </select>
+          <select
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value)}
+            className="w-full sm:w-auto sm:min-w-[160px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+          >
+            <option value="all">All stock</option>
+            <option value="healthy">Healthy stock</option>
+            <option value="low">Low stock</option>
+            <option value="out">Out of stock</option>
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full sm:w-auto sm:min-w-[200px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+          >
+            <option value="newest">Sort: Newest first</option>
+            <option value="name_asc">Sort: Name (A-Z)</option>
+            <option value="name_desc">Sort: Name (Z-A)</option>
+            <option value="stock_desc">Sort: Stock (high to low)</option>
+            <option value="stock_asc">Sort: Stock (low to high)</option>
+            <option value="price_desc">Sort: Price (high to low)</option>
+            <option value="price_asc">Sort: Price (low to high)</option>
+          </select>
+          <div className="w-full sm:w-auto flex flex-wrap items-center gap-2 sm:ml-auto">
+            <Button type="submit" variant="primary">
+              Search
+            </Button>
+                <Button type="button" variant="outline" onClick={() => fetchProducts(meta.current_page, search)}>
+              <FaSync />
+              Refresh
+            </Button>
+            <Button type="button" variant="outline" onClick={clearFilters}>
+              Clear
+            </Button>
+          </div>
         </form>
+        <p className="text-xs text-gray-500 mt-3">
+          Showing {filteredProducts.length} product(s). Last updated: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('en-PH') : '—'}
+        </p>
       </div>
 
       {/* Products Table */}
@@ -416,13 +638,21 @@ const Products = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Store</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    {viewTab === 'pending' ? 'Supplier Stock' : 'Stock'}
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {products.map((product) => (
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                      No products match your current filters/search.
+                    </td>
+                  </tr>
+                ) : filteredProducts.map((product) => (
                   <tr key={product.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -460,24 +690,52 @@ const Products = () => {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <Badge variant={product.stock_quantity > 10 ? 'success' : product.stock_quantity > 0 ? 'warning' : 'danger'}>
-                        {product.stock_quantity}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Badge variant={product.is_active ? 'success' : 'danger'}>
-                        {product.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        type="button"
-                        onClick={() => openModal(product)}
-                        className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                        title="Edit product"
+                      <Badge
+                        variant={
+                          getStockValue(product) > 10
+                            ? 'success'
+                            : getStockValue(product) > 0
+                              ? 'warning'
+                              : 'danger'
+                        }
                       >
-                        <FaEdit className="w-4 h-4" />
-                      </button>
+                        {getStockValue(product)}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Badge variant={product.is_active ? 'success' : 'warning'}>
+                        {product.is_active ? 'Active' : 'Pending Approval'}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        {viewTab === 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => handleApproveListing(product.id)}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Approve listing"
+                          >
+                            <FaCheck className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => openModal(product)}
+                          className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Edit product"
+                        >
+                          <FaEdit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(product.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete product"
+                        >
+                          <FaTrash className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

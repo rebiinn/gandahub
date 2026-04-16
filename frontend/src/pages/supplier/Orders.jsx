@@ -38,6 +38,27 @@ const SupplierOrders = () => {
     }
   };
 
+  const approveCancelRequest = async (orderId) => {
+    try {
+      await ordersAPI.supplierApproveCancelRequest(orderId);
+      toast.success('Cancellation approved and refund processed');
+      fetchOrders(meta.current_page);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to approve cancellation request');
+    }
+  };
+
+  const rejectCancelRequest = async (orderId) => {
+    const note = window.prompt('Reason for rejecting cancellation request (optional):', '') || '';
+    try {
+      await ordersAPI.supplierRejectCancelRequest(orderId, { note });
+      toast.success('Cancellation request rejected');
+      fetchOrders(meta.current_page);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to reject cancellation request');
+    }
+  };
+
   const formatPrice = (amount) =>
     new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
@@ -49,6 +70,7 @@ const SupplierOrders = () => {
       shipped: 'primary',
       out_for_delivery: 'primary',
       delivered: 'success',
+      cancel_requested: 'warning',
       cancelled: 'danger',
       refunded: 'danger',
     };
@@ -76,6 +98,7 @@ const SupplierOrders = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cancel Reason</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -95,8 +118,29 @@ const SupplierOrders = () => {
                       <td className="px-6 py-4 text-gray-500 text-sm">
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs">
+                        {order.status === 'cancel_requested' ? (order.cancellation_reason || '-') : '-'}
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
+                          {order.status === 'cancel_requested' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => approveCancelRequest(order.id)}
+                              >
+                                Approve Cancellation
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => rejectCancelRequest(order.id)}
+                              >
+                                Reject Request
+                              </Button>
+                            </>
+                          )}
                           {order.status === 'pending' && (
                             <Button
                               size="sm"

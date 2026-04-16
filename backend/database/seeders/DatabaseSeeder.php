@@ -232,6 +232,7 @@ class DatabaseSeeder extends Seeder
             ['key' => 'contact_email', 'value' => 'hello@gandahub.com', 'type' => 'string', 'group' => 'general', 'is_public' => true],
             ['key' => 'contact_phone', 'value' => '+63 (02) 8888-GANDA', 'type' => 'string', 'group' => 'general', 'is_public' => true],
             ['key' => 'currency', 'value' => 'PHP', 'type' => 'string', 'group' => 'payment', 'is_public' => true],
+            ['key' => 'marketplace_commission_rate', 'value' => '0.05', 'type' => 'float', 'group' => 'payment', 'is_public' => false],
             ['key' => 'free_shipping_threshold', 'value' => '1500', 'type' => 'integer', 'group' => 'shipping', 'is_public' => true],
             ['key' => 'default_shipping_fee', 'value' => '150', 'type' => 'integer', 'group' => 'shipping', 'is_public' => true],
             ['key' => 'tax_rate', 'value' => '12', 'type' => 'integer', 'group' => 'tax', 'is_public' => false],

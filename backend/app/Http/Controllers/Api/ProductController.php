@@ -160,6 +160,7 @@ class ProductController extends Controller
             'short_description' => 'nullable|string|max:500',
             'price' => 'required|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0|lt:price',
+            'is_on_sale' => 'boolean',
             'stock_quantity' => 'required|integer|min:0',
             'low_stock_threshold' => 'nullable|integer|min:0',
             'brand' => 'nullable|string|max:255',
@@ -180,7 +181,7 @@ class ProductController extends Controller
             'category_id', 'store_id', 'name', 'slug', 'sku', 'description', 'short_description',
             'price', 'sale_price', 'stock_quantity', 'low_stock_threshold', 'brand',
             'weight', 'dimensions', 'images', 'thumbnail', 'attributes',
-            'is_featured', 'is_active',
+            'is_featured', 'is_on_sale', 'is_active',
         ]);
 
         // Convert empty strings to null for optional fields
@@ -188,6 +189,9 @@ class ProductController extends Controller
             if (isset($data[$key]) && $data[$key] === '') {
                 $data[$key] = null;
             }
+        }
+        if (array_key_exists('is_on_sale', $data) && !$request->boolean('is_on_sale')) {
+            $data['sale_price'] = null;
         }
 
         if (empty($data['slug'])) {
@@ -231,6 +235,7 @@ class ProductController extends Controller
             'short_description' => 'nullable|string|max:500',
             'price' => 'sometimes|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
+            'is_on_sale' => 'boolean',
             'stock_quantity' => 'sometimes|integer|min:0',
             'low_stock_threshold' => 'nullable|integer|min:0',
             'brand' => 'nullable|string|max:255',
@@ -251,9 +256,13 @@ class ProductController extends Controller
             'category_id', 'store_id', 'name', 'slug', 'sku', 'description', 'short_description',
             'price', 'sale_price', 'stock_quantity', 'low_stock_threshold', 'brand',
             'weight', 'dimensions', 'images', 'thumbnail', 'attributes',
-            'is_featured', 'is_active',
+            'is_featured', 'is_on_sale', 'is_active',
         ];
-        $product->update($request->only($allowed));
+        $payload = $request->only($allowed);
+        if (array_key_exists('is_on_sale', $payload) && !$request->boolean('is_on_sale')) {
+            $payload['sale_price'] = null;
+        }
+        $product->update($payload);
 
         return $this->successResponse($product->fresh('category'), 'Product updated successfully');
     }
@@ -485,6 +494,8 @@ class ProductController extends Controller
             'short_description' => 'nullable|string|max:500',
             'price' => 'required|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0|lt:price',
+            'is_on_sale' => 'boolean',
+            'is_featured' => 'boolean',
             'supply_price' => 'nullable|numeric|min:0',
             'stock_quantity' => 'required|integer|min:0',
             'low_stock_threshold' => 'nullable|integer|min:0',
@@ -500,7 +511,7 @@ class ProductController extends Controller
         $data = $request->only([
             'category_id', 'name', 'description', 'short_description',
             'price', 'sale_price', 'supply_price', 'low_stock_threshold',
-            'brand', 'thumbnail', 'attributes',
+            'brand', 'thumbnail', 'attributes', 'is_on_sale', 'is_featured',
         ]);
         $supplierStock = (int) $request->input('stock_quantity', 0);
         $data['store_id'] = $store->id;
@@ -509,13 +520,67 @@ class ProductController extends Controller
             ? $baseSlug . '-' . strtolower(Str::random(6))
             : $baseSlug;
         $data['sku'] = strtoupper(Str::random(8));
-        $data['is_featured'] = false;
+        $data['is_featured'] = $request->boolean('is_featured', false);
+        $data['is_on_sale'] = $request->boolean('is_on_sale', false);
+        if (!$data['is_on_sale']) {
+            $data['sale_price'] = null;
+        }
         $data['is_active'] = false; // Only admin can add to shop via "Add to Shop"
         $data['stock_quantity'] = 0; // admin inventory starts at 0
         $data['supplier_stock_quantity'] = $supplierStock;
         $product = Product::create($data);
 
         return $this->successResponse($product->load(['category', 'store']), 'Product created successfully', 201);
+    }
+
+    /**
+     * Admin: list supplier products waiting for listing approval.
+     */
+    public function pendingApprovals(Request $request)
+    {
+        $query = Product::with(['category', 'store'])
+            ->where('is_active', false)
+            ->whereNotNull('store_id');
+
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('brand', 'like', "%{$search}%");
+            });
+        }
+
+        $perPage = min($request->get('per_page', 12), 50);
+        $products = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        return $this->paginatedResponse($products);
+    }
+
+    /**
+     * Admin: approve supplier product listing so it appears in shop.
+     */
+    public function approveSupplierProduct($id)
+    {
+        $product = Product::with('store')->find($id);
+        if (!$product) {
+            return $this->errorResponse('Product not found', 404);
+        }
+
+        if (!$product->store_id) {
+            return $this->errorResponse('Only supplier products can be approved through this flow', 422);
+        }
+
+        $supplierStock = max(0, (int) $product->supplier_stock_quantity);
+        $product->update([
+            'is_active' => true,
+            'stock_quantity' => $supplierStock,
+        ]);
+
+        return $this->successResponse(
+            $product->fresh(['category', 'store']),
+            'Product approved and now visible in shop'
+        );
     }
 
     /**
@@ -539,6 +604,8 @@ class ProductController extends Controller
             'short_description' => 'nullable|string|max:500',
             'price' => 'sometimes|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
+            'is_on_sale' => 'boolean',
+            'is_featured' => 'boolean',
             'supply_price' => 'nullable|numeric|min:0',
             'stock_quantity' => 'sometimes|integer|min:0',
             'low_stock_threshold' => 'nullable|integer|min:0',
@@ -553,11 +620,19 @@ class ProductController extends Controller
 
         $allowed = [
             'name', 'description', 'short_description', 'price', 'sale_price', 'supply_price',
-            'low_stock_threshold', 'brand', 'thumbnail', 'attributes',
+            'low_stock_threshold', 'brand', 'thumbnail', 'attributes', 'is_on_sale', 'is_featured',
         ];
         $data = $request->only($allowed);
+        if (array_key_exists('is_on_sale', $data) && !$request->boolean('is_on_sale')) {
+            $data['sale_price'] = null;
+        }
         if ($request->has('stock_quantity')) {
-            $data['supplier_stock_quantity'] = (int) $request->stock_quantity;
+            $newSupplierStock = (int) $request->stock_quantity;
+            $data['supplier_stock_quantity'] = $newSupplierStock;
+            // Keep shop stock aligned with supplier stock once listing is approved.
+            if ($product->is_active) {
+                $data['stock_quantity'] = max(0, $newSupplierStock);
+            }
         }
         $product->update($data);
         // is_active is controlled by admin only – suppliers cannot change visibility
@@ -611,8 +686,33 @@ class ProductController extends Controller
                 break;
         }
 
-        $product->update(['supplier_stock_quantity' => $newSupplierStock]);
+        $payload = ['supplier_stock_quantity' => $newSupplierStock];
+        // Keep shop stock aligned with supplier stock once listing is approved.
+        if ($product->is_active) {
+            $payload['stock_quantity'] = max(0, $newSupplierStock);
+        }
+        $product->update($payload);
 
         return $this->successResponse($product->fresh(), 'Supplier stock updated successfully');
+    }
+
+    /**
+     * Delete a product (Supplier only). Only for products in supplier's store.
+     */
+    public function supplierDestroy($id)
+    {
+        $store = $this->getSupplierStore();
+        if (!$store) {
+            return $this->errorResponse('Unauthorized', 403);
+        }
+
+        $product = Product::where('id', $id)->where('store_id', $store->id)->first();
+        if (!$product) {
+            return $this->errorResponse('Product not found', 404);
+        }
+
+        $product->delete();
+
+        return $this->successResponse(null, 'Product deleted successfully');
     }
 }

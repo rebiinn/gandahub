@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { messagesAPI } from '../services/api';
 import Button from '../components/common/Button';
 import Loading from '../components/common/Loading';
+import MessageBody from '../components/common/MessageBody';
 
 const Messages = () => {
   const [conversations, setConversations] = useState([]);
@@ -97,7 +98,16 @@ const Messages = () => {
                           : 'bg-gray-200 text-gray-800'
                       }`}
                     >
-                      <p className="text-sm">{m.body}</p>
+                      <div className="text-sm">
+                        <MessageBody
+                          text={m.body}
+                          linkClassName={
+                            m.sender_type === 'customer'
+                              ? 'underline text-white break-all font-medium'
+                              : 'underline text-primary-700 break-all font-medium'
+                          }
+                        />
+                      </div>
                       <p className={`text-xs mt-1 ${m.sender_type === 'customer' ? 'text-primary-200' : 'text-gray-500'}`}>
                         {new Date(m.created_at).toLocaleString()}
                       </p>

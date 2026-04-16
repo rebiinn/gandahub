@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
+import { useState, useEffect, useMemo } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaSync, FaTags, FaCheckCircle, FaBan } from 'react-icons/fa';
 import { categoriesAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
@@ -13,11 +13,12 @@ const Categories = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name_asc');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    parent_id: '',
-    sort_order: 0,
     is_active: true,
   });
 
@@ -30,8 +31,10 @@ const Categories = () => {
       setLoading(true);
       const response = await categoriesAPI.getAll();
       setCategories(response.data.data || []);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       console.error('Failed to fetch categories:', error);
+      toast.error('Failed to fetch categories');
     } finally {
       setLoading(false);
     }
@@ -42,18 +45,12 @@ const Categories = () => {
       setEditingCategory(category);
       setFormData({
         name: category.name || '',
-        description: category.description || '',
-        parent_id: category.parent_id || '',
-        sort_order: category.sort_order || 0,
         is_active: category.is_active !== false,
       });
     } else {
       setEditingCategory(null);
       setFormData({
         name: '',
-        description: '',
-        parent_id: '',
-        sort_order: 0,
         is_active: true,
       });
     }
@@ -62,12 +59,21 @@ const Categories = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const trimmedName = formData.name.trim();
+    if (!trimmedName) {
+      toast.error('Category name is required');
+      return;
+    }
     try {
+      const payload = {
+        ...formData,
+        name: trimmedName,
+      };
       if (editingCategory) {
-        await categoriesAPI.update(editingCategory.id, formData);
+        await categoriesAPI.update(editingCategory.id, payload);
         toast.success('Category updated successfully');
       } else {
-        await categoriesAPI.create(formData);
+        await categoriesAPI.create(payload);
         toast.success('Category created successfully');
       }
       setShowModal(false);
@@ -90,7 +96,60 @@ const Categories = () => {
     }
   };
 
-  const rootCategories = categories.filter(c => !c.parent_id);
+  const filteredCategories = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    let list = categories;
+
+    if (statusFilter !== 'all') {
+      const shouldBeActive = statusFilter === 'active';
+      list = list.filter((category) => Boolean(category.is_active) === shouldBeActive);
+    }
+
+    if (needle) {
+      list = list.filter((category) => {
+        const haystack = [category.name, category.slug]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(needle);
+      });
+    }
+
+    const next = [...list];
+    next.sort((a, b) => {
+      if (sortBy === 'name_desc') return (b.name || '').localeCompare(a.name || '');
+      if (sortBy === 'products_desc') return Number(b.products_count || 0) - Number(a.products_count || 0);
+      if (sortBy === 'products_asc') return Number(a.products_count || 0) - Number(b.products_count || 0);
+      if (sortBy === 'status') {
+        if (a.is_active === b.is_active) return (a.name || '').localeCompare(b.name || '');
+        return a.is_active ? -1 : 1;
+      }
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    return next;
+  }, [categories, searchTerm, statusFilter, sortBy]);
+
+  const summary = useMemo(() => {
+    const activeCount = filteredCategories.filter((c) => c.is_active).length;
+    const inactiveCount = filteredCategories.length - activeCount;
+    const totalProducts = filteredCategories.reduce((sum, c) => sum + Number(c.products_count || 0), 0);
+    const emptyCount = filteredCategories.filter((c) => Number(c.products_count || 0) === 0).length;
+
+    return {
+      total: filteredCategories.length,
+      activeCount,
+      inactiveCount,
+      totalProducts,
+      emptyCount,
+    };
+  }, [filteredCategories]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setSortBy('name_asc');
+  };
 
   return (
     <div>
@@ -100,6 +159,89 @@ const Categories = () => {
           <FaPlus />
           Add Category
         </Button>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaTags />
+            Total Categories
+          </div>
+          <p className="text-2xl font-bold text-gray-800 mt-1">{summary.total}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaCheckCircle />
+            Active
+          </div>
+          <p className="text-2xl font-bold text-green-600 mt-1">{summary.activeCount}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaBan />
+            Inactive
+          </div>
+          <p className="text-2xl font-bold text-red-600 mt-1">{summary.inactiveCount}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaTags />
+            Products Linked
+          </div>
+          <p className="text-2xl font-bold text-primary-600 mt-1">{summary.totalProducts}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <FaBan />
+            Empty Categories
+          </div>
+          <p className="text-2xl font-bold text-amber-600 mt-1">{summary.emptyCount}</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="relative min-w-[260px] flex-grow">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search category name or slug..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+            />
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500 min-w-[180px]"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active only</option>
+            <option value="inactive">Inactive only</option>
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500 min-w-[220px]"
+          >
+            <option value="name_asc">Sort: Name (A-Z)</option>
+            <option value="name_desc">Sort: Name (Z-A)</option>
+            <option value="products_desc">Sort: Most products first</option>
+            <option value="products_asc">Sort: Least products first</option>
+            <option value="status">Sort: Active first</option>
+          </select>
+          <Button type="button" variant="outline" onClick={fetchCategories}>
+            <FaSync />
+            Refresh
+          </Button>
+          <Button type="button" variant="outline" onClick={clearFilters}>
+            Clear
+          </Button>
+        </div>
+        <p className="text-xs text-gray-500 mt-3">
+          Showing {filteredCategories.length} category(ies). Last updated: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('en-PH') : '—'}
+        </p>
       </div>
 
       {/* Categories Table */}
@@ -112,14 +254,19 @@ const Categories = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Products</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {categories.map((category) => (
+                {filteredCategories.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
+                      No categories match your current filters/search.
+                    </td>
+                  </tr>
+                ) : filteredCategories.map((category) => (
                   <tr key={category.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -133,9 +280,6 @@ const Categories = () => {
                           <p className="text-sm text-gray-500">{category.slug}</p>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600 max-w-xs truncate">
-                      {category.description || '-'}
                     </td>
                     <td className="px-6 py-4 text-gray-600">
                       {category.products_count || 0}
@@ -181,37 +325,6 @@ const Categories = () => {
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             required
-          />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Parent Category</label>
-            <select
-              value={formData.parent_id}
-              onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
-            >
-              <option value="">None (Root Category)</option>
-              {rootCategories.filter(c => c.id !== editingCategory?.id).map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
-            />
-          </div>
-
-          <Input
-            label="Sort Order"
-            type="number"
-            value={formData.sort_order}
-            onChange={(e) => setFormData({ ...formData, sort_order: parseInt(e.target.value) || 0 })}
           />
 
           <label className="flex items-center gap-2 cursor-pointer">

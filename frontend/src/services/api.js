@@ -92,6 +92,8 @@ export const productsAPI = {
   getBrands: () => api.get('/products/brands'),
   // Admin
   create: (data) => api.post('/admin/products', data),
+  getPendingApprovals: (params) => api.get('/admin/products/pending-approvals', { params }),
+  approveListing: (id) => api.post(`/admin/products/${id}/approve`),
   update: (id, data) => api.put(`/admin/products/${id}`, data),
   delete: (id) => api.delete(`/admin/products/${id}`),
   updateStock: (id, data) => api.put(`/admin/products/${id}/stock`, data),
@@ -100,6 +102,7 @@ export const productsAPI = {
   // Supplier (own store products)
   supplierCreate: (data) => api.post('/supplier/products', data),
   supplierUpdate: (id, data) => api.put(`/supplier/products/${id}`, data),
+  supplierDelete: (id) => api.delete(`/supplier/products/${id}`),
   supplierUpdateStock: (id, data) => api.put(`/supplier/products/${id}/stock`, data),
 };
 
@@ -145,11 +148,13 @@ export const ordersAPI = {
   getOne: (id) => api.get(`/orders/${id}`),
   create: (data) => api.post('/orders', data),
   placeWithPayment: (data) => api.post('/orders/place-with-payment', data),
-  cancel: (id) => api.post(`/orders/${id}/cancel`),
+  cancel: (id, data) => api.post(`/orders/${id}/cancel`, data),
   track: (orderNumber) => api.get(`/orders/track/${orderNumber}`),
   rateRider: (orderId, data) => api.post(`/orders/${orderId}/rate-rider`, data),
   // Supplier
   supplierUpdateStatus: (id, data) => api.put(`/supplier/orders/${id}/status`, data),
+  supplierApproveCancelRequest: (id) => api.post(`/supplier/orders/${id}/cancel-request/approve`),
+  supplierRejectCancelRequest: (id, data) => api.post(`/supplier/orders/${id}/cancel-request/reject`, data),
 };
 
 // Payments API
@@ -164,6 +169,8 @@ export const paymentsAPI = {
 // Logistics (admin): catalog for dropdowns
 export const logisticsAPI = {
   getCatalog: () => api.get('/admin/logistics/catalog'),
+  getDashboard: () => api.get('/logistics/dashboard'),
+  logisticsGetCatalog: () => api.get('/logistics/catalog'),
   supplierGetCatalog: () => api.get('/supplier/logistics/catalog'),
 };
 
@@ -177,7 +184,10 @@ export const deliveriesAPI = {
   // Supplier
   supplierGetAll: (params) => api.get('/supplier/deliveries', { params }),
   supplierGetOne: (id) => api.get(`/supplier/deliveries/${id}`),
-  supplierArriveAtStation: (id, data) => api.post(`/supplier/deliveries/${id}/arrive-station`, data),
+  // Logistics partner
+  logisticsGetAll: (params) => api.get('/logistics/deliveries', { params }),
+  logisticsGetOne: (id) => api.get(`/logistics/deliveries/${id}`),
+  logisticsArriveAtStation: (id, data) => api.post(`/logistics/deliveries/${id}/arrive-station`, data),
   // Rider
   riderGetAll: (params) => api.get('/rider/deliveries', { params }),
   riderGetClaimable: (params) => api.get('/rider/deliveries/claimable', { params }),
@@ -269,6 +279,37 @@ export const usersAPI = {
   getCustomers: (params) => api.get('/admin/users-customers', { params }),
 };
 
+// Driver / Rider Applications
+export const riderApplicationsAPI = {
+  submit: (data) => api.post('/rider-applications', data),
+  // Admin
+  getAll: (params) => api.get('/admin/rider-applications', { params }),
+  approve: (id, data) => api.post(`/admin/rider-applications/${id}/approve`, data),
+  reject: (id, data) => api.post(`/admin/rider-applications/${id}/reject`, data),
+  // Logistics partner
+  logisticsGetAll: (params) => api.get('/logistics/rider-applications', { params }),
+  logisticsApprove: (id, data) => api.post(`/logistics/rider-applications/${id}/approve`, data),
+  logisticsReject: (id, data) => api.post(`/logistics/rider-applications/${id}/reject`, data),
+};
+
+// Seller Applications
+export const sellerApplicationsAPI = {
+  submit: (data) => api.post('/seller-applications', data),
+  // Admin
+  getAll: (params) => api.get('/admin/seller-applications', { params }),
+  approve: (id, data) => api.post(`/admin/seller-applications/${id}/approve`, data),
+  reject: (id, data) => api.post(`/admin/seller-applications/${id}/reject`, data),
+};
+
+// Public application documents
+export const applicationDocumentsAPI = {
+  upload: (file) => {
+    const formData = new FormData();
+    formData.append('document', file);
+    return api.post('/application-documents', formData);
+  },
+};
+
 // Settings API
 export const settingsAPI = {
   getPublic: () => api.get('/settings/public'),
@@ -280,6 +321,7 @@ export const settingsAPI = {
   bulkUpdate: (settings) => api.put('/admin/settings/bulk', { settings }),
   delete: (key) => api.delete(`/admin/settings/${key}`),
   clearCache: () => api.post('/admin/settings/clear-cache'),
+  clearAllData: (confirmation) => api.post('/admin/settings/clear-all-data', { confirmation }),
   backup: () => api.post('/admin/settings/backup'),
   getSystemInfo: () => api.get('/admin/settings/system-info'),
 };

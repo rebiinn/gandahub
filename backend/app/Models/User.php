@@ -116,6 +116,14 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
+     * Check if user is logistics partner.
+     */
+    public function isLogistics(): bool
+    {
+        return $this->role === 'logistics';
+    }
+
+    /**
      * Get user's saved addresses (home, work, etc.).
      */
     public function addresses(): HasMany

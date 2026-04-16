@@ -105,6 +105,7 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = user?.role === 'admin';
   const isRider = user?.role === 'rider';
   const isSupplier = user?.role === 'supplier';
+  const isLogistics = user?.role === 'logistics';
   const isCustomer = user?.role === 'customer';
 
   const value = {
@@ -115,6 +116,7 @@ export const AuthProvider = ({ children }) => {
     isAdmin,
     isRider,
     isSupplier,
+    isLogistics,
     isCustomer,
     login,
     register,

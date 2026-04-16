@@ -24,8 +24,28 @@ const ShippingInfo = () => {
             Coverage
           </h2>
           <p>
-            We ship nationwide within the Philippines. Whether you are in Metro Manila, Butuan City, or elsewhere,
+            We ship nationwide within the Philippines. Whether you are in Luzon, Visayas, or Mindanao,
             we deliver to your door. Enter your address at checkout to see available options and delivery fees.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-gray-900 mb-3">Platform Shipping Roles</h2>
+          <p>
+            Our platform follows a marketplace workflow. <strong>Admin</strong> controls system settings and monitors
+            operations, but does not manually assign delivery riders for each order. <strong>Sellers</strong> prepare and
+            dispatch products. <strong>Logistics partners</strong> handle shipment operations, including hub processing and
+            rider assignment. <strong>Customers</strong> are the end-users who place orders and receive deliveries.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-gray-900 mb-3">How Delivery Assignment Works</h2>
+          <p>
+            Once a seller ships an order, the parcel is processed by the selected logistics partner. When the parcel
+            arrives at the nearest hub for the destination area, the logistics partner assigns an available rider for
+            last-mile delivery. This keeps fulfillment within logistics operations while admin remains focused on
+            platform governance.
           </p>
         </section>
 

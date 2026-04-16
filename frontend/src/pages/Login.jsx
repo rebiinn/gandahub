@@ -9,7 +9,7 @@ import Button from '../components/common/Button';
 import { authAPI } from '../services/api';
 
 const Login = () => {
-  const { login, isAuthenticated, isAdmin, isRider, isSupplier } = useAuth();
+  const { login, isAuthenticated, isAdmin, isRider, isSupplier, isLogistics } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
@@ -48,7 +48,15 @@ const Login = () => {
           localStorage.setItem('user', JSON.stringify(userData));
           window.history.replaceState({}, '', location.pathname);
           toast.success('Welcome back!');
-          const target = userData.role === 'admin' ? '/admin' : userData.role === 'rider' ? '/rider' : userData.role === 'supplier' ? '/supplier' : from;
+          const target = userData.role === 'admin'
+            ? '/admin'
+            : userData.role === 'rider'
+              ? '/rider'
+              : userData.role === 'supplier'
+                ? '/supplier'
+                : userData.role === 'logistics'
+                  ? '/logistics'
+                  : from;
           window.location.href = target; // full navigation so AuthContext picks up token
         } catch (err) {
           toast.error('Session invalid. Please sign in again.');
@@ -74,6 +82,8 @@ const Login = () => {
       navigate('/rider');
     } else if (isSupplier) {
       navigate('/supplier');
+    } else if (isLogistics) {
+      navigate('/logistics');
     } else {
       navigate(from);
     }
@@ -92,6 +102,8 @@ const Login = () => {
         navigate('/rider');
       } else if (user.role === 'supplier') {
         navigate('/supplier');
+      } else if (user.role === 'logistics') {
+        navigate('/logistics');
       } else {
         navigate(from);
       }
@@ -209,6 +221,18 @@ const Login = () => {
             Don&apos;t have an account?{' '}
             <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">
               Sign up
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-sm text-gray-500">
+            Want to be a rider?{' '}
+            <Link to="/driver-apply" className="text-primary-600 hover:text-primary-700 font-medium">
+              Apply as Driver
+            </Link>
+          </p>
+          <p className="mt-1 text-center text-sm text-gray-500">
+            Want to be a seller?{' '}
+            <Link to="/seller-apply" className="text-primary-600 hover:text-primary-700 font-medium">
+              Apply as Seller
             </Link>
           </p>
         </div>

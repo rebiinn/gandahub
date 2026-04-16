@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom';
 import { FaArrowRight, FaStar, FaTruck, FaLock, FaUndo } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { productsAPI, categoriesAPI, newsletterAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import ProductCard from '../components/common/ProductCard';
 import Loading from '../components/common/Loading';
 import Button from '../components/common/Button';
 
 const Home = () => {
+  const { user } = useAuth();
+  const isSupplier = user?.role === 'supplier';
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [newArrivals, setNewArrivals] = useState([]);
   const [saleProducts, setSaleProducts] = useState([]);
@@ -172,7 +175,7 @@ const Home = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {featuredProducts.slice(0, 8).map((product) => (
-                <ProductCard key={product.id} product={product} />
+                <ProductCard key={product.id} product={product} mode={isSupplier ? 'supplier' : 'customer'} />
               ))}
             </div>
           </div>
@@ -216,7 +219,7 @@ const Home = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {newArrivals.slice(0, 4).map((product) => (
-                <ProductCard key={product.id} product={product} />
+                <ProductCard key={product.id} product={product} mode={isSupplier ? 'supplier' : 'customer'} />
               ))}
             </div>
           </div>
@@ -239,7 +242,7 @@ const Home = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {saleProducts.slice(0, 4).map((product) => (
-                <ProductCard key={product.id} product={product} />
+                <ProductCard key={product.id} product={product} mode={isSupplier ? 'supplier' : 'customer'} />
               ))}
             </div>
           </div>

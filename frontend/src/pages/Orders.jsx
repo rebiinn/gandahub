@@ -52,6 +52,7 @@ const Orders = () => {
       shipped: 'primary',
       out_for_delivery: 'primary',
       delivered: 'success',
+      cancel_requested: 'warning',
       cancelled: 'danger',
       refunded: 'danger',
     };

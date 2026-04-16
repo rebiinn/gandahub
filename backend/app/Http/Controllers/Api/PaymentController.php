@@ -6,12 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
@@ -174,11 +174,6 @@ class PaymentController extends Controller
     {
         return $this->successResponse([
             'methods' => Payment::getPaymentMethods(),
-            'gcash' => [
-                'receiver_name' => (string) SystemSetting::get('gcash_receiver_name', 'Ganda Hub Cosmetics'),
-                'receiver_number' => (string) SystemSetting::get('gcash_receiver_number', ''),
-                'qr_image_url' => (string) SystemSetting::get('gcash_qr_image_url', ''),
-            ],
         ]);
     }
 
@@ -187,24 +182,78 @@ class PaymentController extends Controller
      */
     public function paymongoWebhook(Request $request)
     {
+        $rawPayload = (string) $request->getContent();
         $payload = $request->all();
+        $webhookSecret = (string) config('services.paymongo.webhook_secret', '');
+        if ($webhookSecret !== '') {
+            $signatureHeader = (string) $request->header('Paymongo-Signature', '');
+            if (!$this->isValidPayMongoSignature($signatureHeader, $rawPayload, $webhookSecret)) {
+                Log::warning('Rejected PayMongo webhook due to invalid signature');
+                return $this->errorResponse('Invalid webhook signature', 401);
+            }
+        }
+
         $eventType = (string) data_get($payload, 'data.attributes.type', '');
         $resourceData = data_get($payload, 'data.attributes.data', []);
+        $providerPaymentId = (string) data_get($resourceData, 'id', '');
+        $paymentIntentId = (string) (
+            data_get($resourceData, 'attributes.payment_intent_id')
+            ?: data_get($resourceData, 'attributes.source.attributes.payment_intent_id')
+            ?: data_get($resourceData, 'attributes.source.payment_intent_id')
+        );
+        $providerCodeId = (string) (
+            data_get($resourceData, 'attributes.source.provider.code_id')
+            ?: data_get($resourceData, 'attributes.source.attributes.provider.code_id')
+        );
 
         // Best-effort extraction across PayMongo event payload variants.
         $checkoutSessionId = (string) (
             data_get($resourceData, 'id')
             ?: data_get($resourceData, 'attributes.checkout_session_id')
             ?: data_get($resourceData, 'attributes.source.id')
+            ?: data_get($resourceData, 'attributes.payment_intent_id')
             ?: data_get($resourceData, 'attributes.metadata.checkout_session_id')
+            ?: data_get($resourceData, 'attributes.metadata.checkoutSessionId')
         );
 
-        if ($checkoutSessionId === '') {
-            Log::warning('PayMongo webhook received without checkout session id', ['payload' => $payload]);
-            return $this->successResponse(['received' => true], 'Ignored');
+        $payment = null;
+        if ($paymentIntentId !== '') {
+            $payment = Payment::where('payment_details->payment_intent_id', $paymentIntentId)
+                ->orWhere('transaction_id', $paymentIntentId)
+                ->first();
+        }
+        if (!$payment && $providerCodeId !== '') {
+            $payment = Payment::where('payment_details->qr_code_id', $providerCodeId)->first();
+        }
+        if (!$payment && $providerPaymentId !== '') {
+            $payment = Payment::where('payment_details->provider_payment_id', $providerPaymentId)->first();
         }
 
-        $payment = Payment::where('payment_details->checkout_session_id', $checkoutSessionId)->first();
+        if (!$payment && $checkoutSessionId === '') {
+            // Fallback: map webhook by local payment id or order id in metadata.
+            $metadata = (array) data_get($resourceData, 'attributes.metadata', []);
+            $metaPaymentId = Arr::get($metadata, 'payment_id');
+            $metaOrderId = Arr::get($metadata, 'order_id');
+
+            if (!empty($metaPaymentId)) {
+                $payment = Payment::find($metaPaymentId);
+            } elseif (!empty($metaOrderId)) {
+                $payment = Payment::where('order_id', $metaOrderId)->latest('id')->first();
+            }
+
+            if (!$payment) {
+                Log::warning('PayMongo webhook received without mappable checkout session id', ['payload' => $payload]);
+                return $this->successResponse(['received' => true], 'Ignored');
+            }
+        } elseif (!$payment) {
+            $payment = Payment::where('payment_details->checkout_session_id', $checkoutSessionId)
+                ->orWhere('payment_details->payment_intent_id', $checkoutSessionId)
+                ->orWhere('payment_details->qr_code_id', $checkoutSessionId)
+                ->orWhere('payment_details->provider_payment_id', $checkoutSessionId)
+                ->orWhere('transaction_id', $checkoutSessionId)
+                ->first();
+        }
+
         if (!$payment) {
             Log::warning('PayMongo webhook session not mapped to local payment', ['checkout_session_id' => $checkoutSessionId]);
             return $this->successResponse(['received' => true], 'Ignored');
@@ -220,17 +269,52 @@ class PaymentController extends Controller
         $isFailedEvent = str_contains($normalizedType, 'failed') || str_contains($normalizedType, 'expired');
 
         if ($isPaidEvent) {
+            $orderCancelled = in_array((string) $order->status, [Order::STATUS_CANCELLED], true);
+            if ($orderCancelled) {
+                if ($payment->status !== Payment::STATUS_REFUNDED) {
+                    $method = strtolower((string) $payment->payment_method);
+                    if ($method === Payment::METHOD_GCASH) {
+                        $customer = User::where('id', $order->user_id)->lockForUpdate()->first();
+                        if ($customer) {
+                            $currentBalance = (float) $customer->gcash_balance;
+                            $refundAmount = (float) $payment->amount;
+                            $customer->update([
+                                'gcash_balance' => round($currentBalance + $refundAmount, 2),
+                            ]);
+                        }
+                    }
+                    $payment->update([
+                        'status' => Payment::STATUS_REFUNDED,
+                        'notes' => 'Auto-refunded: payment confirmation arrived after order cancellation',
+                        'payment_details' => array_merge($payment->payment_details ?? [], [
+                            'provider' => 'paymongo',
+                            'provider_payment_id' => $providerPaymentId ?: data_get($payment->payment_details, 'provider_payment_id'),
+                            'payment_intent_id' => $paymentIntentId ?: data_get($payment->payment_details, 'payment_intent_id'),
+                            'qr_code_id' => $providerCodeId ?: data_get($payment->payment_details, 'qr_code_id'),
+                            'refund_reason' => 'payment_paid_after_order_cancelled',
+                            'refund_amount' => (float) $payment->amount,
+                            'refund_at' => now()->toDateTimeString(),
+                            'last_webhook_event' => $eventType,
+                        ]),
+                    ]);
+                }
+                return $this->successResponse(['received' => true]);
+            }
+
             if ($payment->status !== Payment::STATUS_COMPLETED) {
-                $providerPaymentId = (string) (
+                $resolvedProviderPaymentId = (string) (
                     data_get($resourceData, 'attributes.payments.0.id')
-                    ?: data_get($resourceData, 'attributes.payment_intent_id')
+                    ?: $providerPaymentId
+                    ?: $paymentIntentId
                     ?: $checkoutSessionId
                 );
-                $payment->markAsCompleted($providerPaymentId);
+                $payment->markAsCompleted($resolvedProviderPaymentId);
                 $payment->update([
                     'payment_details' => array_merge($payment->payment_details ?? [], [
                         'provider' => 'paymongo',
-                        'provider_payment_id' => $providerPaymentId,
+                        'provider_payment_id' => $resolvedProviderPaymentId,
+                        'payment_intent_id' => $paymentIntentId ?: data_get($payment->payment_details, 'payment_intent_id'),
+                        'qr_code_id' => $providerCodeId ?: data_get($payment->payment_details, 'qr_code_id'),
                         'last_webhook_event' => $eventType,
                     ]),
                 ]);
@@ -255,6 +339,32 @@ class PaymentController extends Controller
         }
 
         return $this->successResponse(['received' => true]);
+    }
+
+    protected function isValidPayMongoSignature(string $signatureHeader, string $payload, string $secret): bool
+    {
+        if ($signatureHeader === '' || $payload === '' || $secret === '') {
+            return false;
+        }
+
+        $parts = [];
+        foreach (explode(',', $signatureHeader) as $segment) {
+            [$key, $value] = array_pad(explode('=', trim($segment), 2), 2, null);
+            if ($key && $value) {
+                $parts[$key] = $value;
+            }
+        }
+
+        $timestamp = $parts['t'] ?? '';
+        $signature = $parts['v1'] ?? ($parts['te'] ?? '');
+        if ($timestamp === '' || $signature === '') {
+            return false;
+        }
+
+        $signedPayload = $timestamp . '.' . $payload;
+        $expected = hash_hmac('sha256', $signedPayload, $secret);
+
+        return hash_equals($expected, $signature);
     }
 
     /**

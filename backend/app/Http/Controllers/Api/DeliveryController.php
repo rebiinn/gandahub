@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Delivery;
 use App\Models\Order;
+use App\Models\RiderApplication;
 use App\Models\Store;
 use App\Models\User;
 use App\Notifications\ParcelAtLogisticsStationNotification;
 use App\Notifications\RiderAssignedForDeliveryNotification;
+use App\Services\OrderCustomerNotifier;
 use App\Support\LogisticsCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +20,72 @@ use Illuminate\Validation\Rule;
 
 class DeliveryController extends Controller
 {
+    /**
+     * Logistics dashboard analytics.
+     */
+    public function logisticsDashboard()
+    {
+        $today = now()->toDateString();
+
+        $cards = [
+            'total_deliveries' => Delivery::count(),
+            'awaiting_hub_intake' => Delivery::query()
+                ->whereNull('station_arrived_at')
+                ->whereHas('order', function ($q) {
+                    $q->where('status', Order::STATUS_SHIPPED);
+                })
+                ->count(),
+            'at_hub_or_in_progress' => Delivery::query()
+                ->whereNotNull('station_arrived_at')
+                ->whereIn('status', [
+                    Delivery::STATUS_ASSIGNED,
+                    Delivery::STATUS_PICKED_UP,
+                    Delivery::STATUS_IN_TRANSIT,
+                    Delivery::STATUS_OUT_FOR_DELIVERY,
+                ])
+                ->count(),
+            'delivered_today' => Delivery::query()
+                ->whereDate('delivered_at', $today)
+                ->count(),
+            'active_riders' => User::query()
+                ->where('role', 'rider')
+                ->where('is_active', true)
+                ->count(),
+            'pending_driver_applications' => RiderApplication::query()
+                ->where('status', RiderApplication::STATUS_PENDING)
+                ->count(),
+        ];
+
+        $statusBreakdown = [
+            Delivery::STATUS_PENDING => Delivery::where('status', Delivery::STATUS_PENDING)->count(),
+            Delivery::STATUS_ASSIGNED => Delivery::where('status', Delivery::STATUS_ASSIGNED)->count(),
+            Delivery::STATUS_PICKED_UP => Delivery::where('status', Delivery::STATUS_PICKED_UP)->count(),
+            Delivery::STATUS_IN_TRANSIT => Delivery::where('status', Delivery::STATUS_IN_TRANSIT)->count(),
+            Delivery::STATUS_OUT_FOR_DELIVERY => Delivery::where('status', Delivery::STATUS_OUT_FOR_DELIVERY)->count(),
+            Delivery::STATUS_DELIVERED => Delivery::where('status', Delivery::STATUS_DELIVERED)->count(),
+            Delivery::STATUS_FAILED => Delivery::where('status', Delivery::STATUS_FAILED)->count(),
+            Delivery::STATUS_RETURNED => Delivery::where('status', Delivery::STATUS_RETURNED)->count(),
+        ];
+
+        $recentDeliveries = Delivery::query()
+            ->with(['order.user', 'rider'])
+            ->orderByDesc('created_at')
+            ->limit(6)
+            ->get();
+
+        $recentApplications = RiderApplication::query()
+            ->orderByDesc('created_at')
+            ->limit(6)
+            ->get();
+
+        return $this->successResponse([
+            'cards' => $cards,
+            'status_breakdown' => $statusBreakdown,
+            'recent_deliveries' => $recentDeliveries,
+            'recent_driver_applications' => $recentApplications,
+        ]);
+    }
+
     /**
      * Get all deliveries (Admin/Rider).
      */
@@ -149,7 +217,7 @@ class DeliveryController extends Controller
 
     /**
      * Mark delivery as arrived at logistics station and auto-assign a rider.
-     * Allowed for supplier of the order; admin is oversight-only.
+     * Allowed for logistics partner role only.
      */
     public function arriveAtStation(Request $request, $id)
     {
@@ -179,20 +247,8 @@ class DeliveryController extends Controller
         }
 
         $user = auth()->user();
-        if (! $user->isSupplier()) {
-            return $this->errorResponse('Only suppliers can process logistics handoff for their orders', 403);
-        }
-        $store = Store::where('user_id', $user->id)->first();
-        if (! $store) {
-            return $this->errorResponse('Supplier store not found', 404);
-        }
-        $ownsOrder = $delivery->order?->items()
-            ->whereHas('product', function ($query) use ($store) {
-                $query->where('store_id', $store->id);
-            })
-            ->exists();
-        if (! $ownsOrder) {
-            return $this->errorResponse('Unauthorized', 403);
+        if (! $user->isLogistics()) {
+            return $this->errorResponse('Only logistics partners can process station handoff', 403);
         }
 
         $region = $request->logistics_region;
@@ -289,6 +345,8 @@ class DeliveryController extends Controller
             return $this->errorResponse('Unauthorized', 403);
         }
 
+        $previousDeliveryStatus = $delivery->status;
+
         $delivery->updateDeliveryStatus($request->status, $request->location);
 
         if ($request->notes) {
@@ -304,7 +362,14 @@ class DeliveryController extends Controller
             $order->updateStatus(Order::STATUS_OUT_FOR_DELIVERY);
         }
 
-        return $this->successResponse($delivery->fresh(['order', 'rider']), 'Delivery status updated');
+        $delivery = $delivery->fresh(['order.user', 'rider']);
+        OrderCustomerNotifier::notifyRiderDeliveryMilestone(
+            $delivery,
+            $previousDeliveryStatus,
+            $request->status
+        );
+
+        return $this->successResponse($delivery, 'Delivery status updated');
     }
 
     /**

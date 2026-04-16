@@ -195,6 +195,58 @@ class UploadController extends Controller
     }
 
     /**
+     * Upload a supporting application document (resume/ID/etc).
+     */
+    public function uploadApplicationDocument(Request $request)
+    {
+        $allowedExtensions = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp'];
+        $validator = Validator::make($request->all(), [
+            'document' => [
+                'required',
+                'file',
+                'max:10240', // 10MB
+                function ($attribute, $value, $fail) use ($allowedExtensions) {
+                    if (!$value->isValid()) {
+                        $fail('The file upload failed.');
+                        return;
+                    }
+                    $ext = strtolower($value->getClientOriginalExtension());
+                    if (!in_array($ext, $allowedExtensions, true)) {
+                        $fail('Document must be PDF, DOC, DOCX, JPG, PNG, or WEBP.');
+                    }
+                },
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', 422, $validator->errors());
+        }
+
+        try {
+            $file = $request->file('document');
+            $folder = 'applications/documents';
+            $filename = Str::uuid() . '.' . strtolower($file->getClientOriginalExtension());
+            $dir = storage_path('app/public/' . $folder);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+            $fullPath = $dir . '/' . $filename;
+            if (!move_uploaded_file($file->getRealPath(), $fullPath)) {
+                throw new \Exception('Failed to save file to disk.');
+            }
+            $path = $folder . '/' . $filename;
+
+            return $this->successResponse([
+                'url' => url('storage/' . $path),
+                'path' => $path,
+                'filename' => $file->getClientOriginalName(),
+            ], 'Document uploaded successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Upload failed: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Delete an uploaded file.
      */
     public function delete(Request $request)

@@ -41,6 +41,8 @@
 - Admin order management (view, process, ship, cancel)
 - System settings configuration
 - Report generation (sales, inventory, and user activity reports)
+- Report history management (view and delete previously generated reports)
+- In-app report viewing workflow (no mandatory file download/export dependency)
 
 ### 7. Customer Engagement
 - Customer product reviews and ratings
@@ -58,6 +60,7 @@
 - Mobile-responsive design for all device sizes
 - Intuitive and user-friendly interface
 - Standardized error handling and clear user feedback messages
+- Consistent report UX where the selected report type controls generation and filtering context
 
 ### 3. Security
 - Secure data transmission using SSL/HTTPS

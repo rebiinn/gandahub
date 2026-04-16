@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   FaSearch, 
@@ -19,11 +19,18 @@ import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { notificationsAPI } from '../../services/api';
 
+const PROMO_BANNERS = [
+  'Free Shipping on Orders Over ₱1,500 | Use Code: GANDA15 for 15% Off',
+  'New Collection 2026 — Shop Now & Get 20% Off with CODE: BEAUTY20',
+  'Flash Sale: Free Gift on Orders Over ₱2,000 | Use Code: GIFT2026',
+  'Subscribe to Our Newsletter — Get 10% Off Your First Order',
+];
+
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { user, isAuthenticated, logout, isAdmin, isRider, isSupplier, isCustomer } = useAuth();
+  const { user, isAuthenticated, logout, isAdmin, isRider, isSupplier, isLogistics, isCustomer } = useAuth();
   const { itemsCount } = useCart();
   const { itemsCount: wishlistCount } = useWishlist();
   const navigate = useNavigate();
@@ -48,20 +55,14 @@ const Navbar = () => {
     { name: 'New Arrivals', path: '/products?sort_by=created_at' },
     { name: 'Sale', path: '/products?on_sale=true' },
   ];
-
-  const promoBanners = [
-    'Free Shipping on Orders Over ₱1,500 | Use Code: GANDA15 for 15% Off',
-    'New Collection 2026 — Shop Now & Get 20% Off with CODE: BEAUTY20',
-    'Flash Sale: Free Gift on Orders Over ₱2,000 | Use Code: GIFT2026',
-    'Subscribe to Our Newsletter — Get 10% Off Your First Order',
-  ];
+  const visibleNavLinks = (isSupplier || isLogistics) ? [] : navLinks;
 
   const [bannerIndex, setBannerIndex] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [customerNotifs, setCustomerNotifs] = useState([]);
   const [notifUnread, setNotifUnread] = useState(0);
 
-  const fetchCustomerNotifications = async () => {
+  const fetchCustomerNotifications = useCallback(async () => {
     if (!isCustomer) return;
     try {
       const [listRes, countRes] = await Promise.all([
@@ -73,18 +74,18 @@ const Navbar = () => {
     } catch {
       // ignore
     }
-  };
+  }, [isCustomer]);
 
   useEffect(() => {
     if (!isCustomer) return;
     fetchCustomerNotifications();
     const t = setInterval(fetchCustomerNotifications, 60000);
     return () => clearInterval(t);
-  }, [isCustomer]);
+  }, [isCustomer, fetchCustomerNotifications]);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setBannerIndex((i) => (i + 1) % promoBanners.length);
+      setBannerIndex((i) => (i + 1) % PROMO_BANNERS.length);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -98,10 +99,10 @@ const Navbar = () => {
           className="animate-fade-in"
           style={{ animationDuration: '0.4s' }}
         >
-          {promoBanners[bannerIndex]}
+          {PROMO_BANNERS[bannerIndex]}
         </div>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1.5">
-          {promoBanners.map((_, i) => (
+          {PROMO_BANNERS.map((_, i) => (
             <button
               key={i}
               type="button"
@@ -129,7 +130,7 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            {navLinks.map((link) => (
+            {visibleNavLinks.map((link) => (
               <Link
                 key={link.name}
                 to={link.path}
@@ -205,7 +206,7 @@ const Navbar = () => {
               </div>
             )}
             {/* Wishlist & Cart - hide for suppliers */}
-            {isAuthenticated && !isSupplier && (
+            {isCustomer && (
               <>
                 <Link to="/wishlist" className="relative hidden sm:inline-flex h-9 w-9 items-center justify-center text-gray-600 hover:text-primary-600 transition-colors">
                   <FaHeart className="w-5 h-5" />
@@ -272,6 +273,16 @@ const Navbar = () => {
                         My Store
                       </Link>
                     )}
+                    {isLogistics && (
+                      <Link
+                        to="/logistics"
+                        className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsProfileOpen(false)}
+                      >
+                        <FaBox className="w-4 h-4" />
+                        Logistics Dashboard
+                      </Link>
+                    )}
                     <Link
                       to="/profile"
                       className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
@@ -281,7 +292,7 @@ const Navbar = () => {
                       My Profile
                     </Link>
                     {/* My Orders - hide for suppliers */}
-                    {!isSupplier && (
+                    {isCustomer && (
                       <Link
                         to="/orders"
                         className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50"
@@ -348,7 +359,7 @@ const Navbar = () => {
             </form>
 
             {/* Mobile Wishlist - customer only */}
-            {isAuthenticated && (
+            {isCustomer && (
               <Link
                 to="/wishlist"
                 className="flex items-center gap-2 py-2 px-4 text-gray-700 hover:bg-primary-50 hover:text-primary-600 rounded-lg"
@@ -361,7 +372,7 @@ const Navbar = () => {
 
             {/* Mobile Nav Links */}
             <div className="space-y-2">
-              {navLinks.map((link) => (
+              {visibleNavLinks.map((link) => (
                 <Link
                   key={link.name}
                   to={link.path}

@@ -21,20 +21,6 @@ export const CartProvider = ({ children }) => {
   const [itemsCount, setItemsCount] = useState(0);
 
   // Fetch cart when user is authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchCart();
-    } else {
-      // Load from localStorage for guests
-      const savedCart = localStorage.getItem('guestCart');
-      if (savedCart) {
-        const parsedCart = JSON.parse(savedCart);
-        setItems(parsedCart.items || []);
-        setItemsCount(parsedCart.items?.reduce((acc, item) => acc + item.quantity, 0) || 0);
-      }
-    }
-  }, [isAuthenticated]);
-
   const fetchCart = useCallback(async () => {
     if (!isAuthenticated) return;
 
@@ -52,7 +38,22 @@ export const CartProvider = ({ children }) => {
     }
   }, [isAuthenticated]);
 
-  const addToCart = async (productId, quantity = 1, options = null) => {
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchCart();
+    } else {
+      // Load from localStorage for guests
+      const savedCart = localStorage.getItem('guestCart');
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart);
+        setItems(parsedCart.items || []);
+        setItemsCount(parsedCart.items?.reduce((acc, item) => acc + item.quantity, 0) || 0);
+      }
+    }
+  }, [isAuthenticated, fetchCart]);
+
+  const addToCart = async (productId, quantity = 1, options = null, meta = {}) => {
+    const silent = Boolean(meta.silent);
     if (!isAuthenticated) {
       // Handle guest cart
       toast.info('Please login to add items to cart');
@@ -70,7 +71,9 @@ export const CartProvider = ({ children }) => {
       setCart(data.cart);
       setItems(data.cart.items || []);
       setItemsCount(data.items_count || 0);
-      toast.success('Added to cart!');
+      if (!silent) {
+        toast.success('Added to cart!');
+      }
       return true;
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to add to cart';

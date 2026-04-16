@@ -8,8 +8,10 @@ import {
   FaTruck,
   FaExclamationTriangle,
   FaCheckCircle,
-  FaArrowUp,
-  FaArrowDown
+  FaSync,
+  FaClock,
+  FaClipboardList,
+  FaChartLine
 } from 'react-icons/fa';
 import { reportsAPI } from '../../services/api';
 import Loading from '../../components/common/Loading';
@@ -17,6 +19,7 @@ import Loading from '../../components/common/Loading';
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   useEffect(() => {
     fetchDashboardStats();
@@ -26,6 +29,7 @@ const Dashboard = () => {
     try {
       const response = await reportsAPI.getDashboard();
       setStats(response.data.data);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
     } finally {
@@ -42,43 +46,41 @@ const Dashboard = () => {
     return `₱ ${formatted}`;
   };
 
+  const formatCount = (value) => Number(value || 0).toLocaleString('en-PH');
+
   if (loading) {
     return <Loading />;
   }
 
   const statCards = [
     {
-      title: 'Total Revenue',
-      value: formatPrice(stats?.totals?.revenue),
-      change: '+12%',
-      changeType: 'positive',
+      title: 'Platform GMV',
+      value: formatPrice(stats?.totals?.platform_gmv ?? stats?.totals?.revenue),
+      hint: `Today: ${formatPrice(stats?.today?.platform_gmv ?? stats?.today?.revenue)}`,
       icon: FaMoneyBillWave,
       color: 'bg-green-500',
       link: '/admin/reports',
     },
     {
       title: 'Total Orders',
-      value: stats?.totals?.orders || 0,
-      change: '+8%',
-      changeType: 'positive',
+      value: formatCount(stats?.totals?.orders),
+      hint: `This month: ${formatCount(stats?.this_month?.orders)}`,
       icon: FaShoppingCart,
       color: 'bg-blue-500',
       link: '/admin/orders',
     },
     {
       title: 'Total Products',
-      value: stats?.totals?.products || 0,
-      change: '+3%',
-      changeType: 'positive',
+      value: formatCount(stats?.totals?.products),
+      hint: `${formatCount(stats?.low_stock_products)} low stock`,
       icon: FaBox,
       color: 'bg-purple-500',
       link: '/admin/products',
     },
     {
       title: 'Total Customers',
-      value: stats?.totals?.customers || 0,
-      change: '+15%',
-      changeType: 'positive',
+      value: formatCount(stats?.totals?.customers),
+      hint: `New today: ${formatCount(stats?.today?.new_customers)}`,
       icon: FaUsers,
       color: 'bg-orange-500',
       link: '/admin/users',
@@ -86,18 +88,71 @@ const Dashboard = () => {
   ];
 
   const quickStats = [
-    { label: "Today's Orders", value: stats?.today?.orders || 0 },
-    { label: "Today's Revenue", value: formatPrice(stats?.today?.revenue) },
-    { label: 'New Customers Today', value: stats?.today?.new_customers || 0 },
-    { label: 'This Month Orders', value: stats?.this_month?.orders || 0 },
-    { label: 'This Month Revenue', value: formatPrice(stats?.this_month?.revenue) },
+    { label: "Today's Orders", value: formatCount(stats?.today?.orders) },
+    { label: "Today's GMV", value: formatPrice(stats?.today?.platform_gmv ?? stats?.today?.revenue) },
+    { label: "Today's Platform Profit", value: formatPrice(stats?.today?.platform_profit) },
+    { label: 'New Customers Today', value: formatCount(stats?.today?.new_customers) },
+    { label: 'This Month Orders', value: formatCount(stats?.this_month?.orders) },
+    { label: 'This Month GMV', value: formatPrice(stats?.this_month?.platform_gmv ?? stats?.this_month?.revenue) },
+    { label: 'This Month Platform Profit', value: formatPrice(stats?.this_month?.platform_profit) },
+    {
+      label: 'Commission Rate',
+      value: `${Math.round((Number(stats?.commission_rate) || 0) * 100)}%`,
+    },
+  ];
+
+  const operationsCards = [
+    {
+      title: 'Pending Orders',
+      value: formatCount(stats?.pending?.orders),
+      icon: FaClipboardList,
+      tone: 'text-amber-700 bg-amber-50 border-amber-100',
+      link: '/admin/orders',
+    },
+    {
+      title: 'Pending Deliveries',
+      value: formatCount(stats?.pending?.deliveries),
+      icon: FaTruck,
+      tone: 'text-blue-700 bg-blue-50 border-blue-100',
+      link: '/admin/logistics',
+    },
+    {
+      title: 'Pending Reviews',
+      value: formatCount(stats?.pending?.reviews),
+      icon: FaClock,
+      tone: 'text-purple-700 bg-purple-50 border-purple-100',
+      link: '/admin/reports',
+    },
+    {
+      title: 'Low Stock Products',
+      value: formatCount(stats?.low_stock_products),
+      icon: FaExclamationTriangle,
+      tone: 'text-red-700 bg-red-50 border-red-100',
+      link: '/admin/inventory',
+    },
   ];
 
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-600 text-sm">Welcome back! Here&apos;s what&apos;s happening with your store.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+            <p className="text-gray-600 text-sm">Marketplace overview and operational health at a glance.</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <FaClock className="w-3.5 h-3.5" />
+            Last updated: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('en-PH') : '—'}
+            <button
+              type="button"
+              onClick={fetchDashboardStats}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-600"
+            >
+              <FaSync className="w-3 h-3" />
+              Refresh
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main Stats */}
@@ -110,19 +165,34 @@ const Dashboard = () => {
               to={stat.link}
               className="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow"
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <div className={`w-12 h-12 ${stat.color} rounded-lg flex items-center justify-center`}>
                   <Icon className="w-6 h-6 text-white" />
                 </div>
-                <span className={`flex items-center gap-1 text-sm ${
-                  stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {stat.changeType === 'positive' ? <FaArrowUp /> : <FaArrowDown />}
-                  {stat.change}
-                </span>
+                <FaChartLine className="text-gray-300 w-5 h-5" />
               </div>
               <h3 className="text-2xl font-bold text-gray-800">{stat.value}</h3>
               <p className="text-gray-600 text-sm">{stat.title}</p>
+              <p className="text-xs text-gray-500 mt-1">{stat.hint}</p>
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {operationsCards.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.title}
+              to={item.link}
+              className={`rounded-xl border p-4 transition-colors hover:brightness-95 ${item.tone}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium">{item.title}</p>
+                <Icon className="w-4 h-4" />
+              </div>
+              <p className="text-2xl font-bold">{item.value}</p>
             </Link>
           );
         })}
@@ -134,7 +204,7 @@ const Dashboard = () => {
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Quick Stats</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {quickStats.map((item, index) => (
-              <div key={index} className="p-4 bg-gray-50 rounded-lg">
+              <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <p className="text-sm text-gray-600">{item.label}</p>
                 <p className="text-xl font-bold text-gray-800">{item.value}</p>
               </div>
@@ -146,12 +216,12 @@ const Dashboard = () => {
         <div className="bg-white rounded-xl shadow-sm p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Alerts</h2>
           <div className="space-y-2">
-            {(!stats?.pending?.orders && !stats?.pending?.deliveries && !stats?.low_stock_products && !stats?.pending?.reviews) ? (
+            {(!stats?.pending?.orders && !stats?.pending?.deliveries && !stats?.low_stock_products) ? (
               <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-100">
                 <FaCheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                 <div>
                   <p className="font-medium text-green-800">All good</p>
-                  <p className="text-sm text-green-600">No pending orders, deliveries, low stock, or reviews to act on.</p>
+                  <p className="text-sm text-green-600">No pending orders, deliveries, or low stock to act on.</p>
                 </div>
               </div>
             ) : null}
@@ -182,18 +252,6 @@ const Dashboard = () => {
                 </div>
               </div>
             )}
-            {stats?.pending?.reviews > 0 && (
-              <Link
-                to="/admin/reviews"
-                className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors"
-              >
-                <FaUsers className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-purple-800">Pending Reviews</p>
-                  <p className="text-sm text-purple-600">{stats.pending.reviews} reviews awaiting approval — open to approve</p>
-                </div>
-              </Link>
-            )}
           </div>
         </div>
       </div>
@@ -205,7 +263,7 @@ const Dashboard = () => {
           className="p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow text-center"
         >
           <FaBox className="w-8 h-8 text-primary-500 mx-auto mb-2" />
-          <p className="font-medium text-gray-800">Add Product</p>
+          <p className="font-medium text-gray-800">Manage Products</p>
         </Link>
         <Link
           to="/admin/orders"

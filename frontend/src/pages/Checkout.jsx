@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { FaMoneyBill, FaMobile, FaCheckCircle, FaHome, FaBriefcase, FaMapMarkerAlt } from 'react-icons/fa';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { ordersAPI, addressesAPI, cartAPI, paymentsAPI } from '../services/api';
+import { ordersAPI, addressesAPI, cartAPI } from '../services/api';
 import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
 import { formatShadeOptionLabel } from '../utils/productShades';
 import { reverseGeocode } from '../utils/geocode';
@@ -24,12 +24,12 @@ const Checkout = () => {
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [step, setStep] = useState(PAYMENT_STEP);
-  const [checkoutData, setCheckoutData] = useState(null); // For GCash: shipping info before payment (order not created until payment)
-  const [gcashQrImageUrl, setGcashQrImageUrl] = useState('');
-  const [gcashReceiverName, setGcashReceiverName] = useState('Ganda Hub Cosmetics');
-  const [gcashReceiverNumber, setGcashReceiverNumber] = useState('');
+  const [checkoutData, setCheckoutData] = useState(null);
   const [gcashOrderId, setGcashOrderId] = useState(null);
-  const [creatingGcashOrder, setCreatingGcashOrder] = useState(false);
+  const [gcashCheckoutUrl, setGcashCheckoutUrl] = useState('');
+  const [gcashQrImageUrl, setGcashQrImageUrl] = useState('');
+  const [showFullQr, setShowFullQr] = useState(false);
+  const [waitingForPayment, setWaitingForPayment] = useState(false);
 
   const {
     register,
@@ -72,7 +72,9 @@ const Checkout = () => {
     let cancelled = false;
     addressesAPI.getAll().then((res) => {
       if (!cancelled && res?.data?.data) setSavedAddresses(Array.isArray(res.data.data) ? res.data.data : []);
-    }).catch(() => {});
+    }).catch(() => {
+      // Ignore optional saved-address prefetch failures.
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -99,7 +101,9 @@ const Checkout = () => {
         setValue('shipping_state', result.state || '');
         setValue('shipping_zip_code', result.zip_code || '');
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore reverse-geocode failures; user can still type address manually.
+    }
     setGeocoding(false);
   };
 
@@ -144,14 +148,6 @@ const Checkout = () => {
     }
   };
 
-  const paymentForm = useForm({
-    defaultValues: {
-      // GCash
-      gcash_number: '',
-      gcash_name: '',
-    },
-  });
-
   const formatPrice = (amount) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
@@ -189,7 +185,6 @@ const Checkout = () => {
       };
 
       if (needsPaymentStep) {
-        // Don't create order yet - wait until payment is submitted so we don't get pending orders from abandoned checkouts
         if (saveAddressForNextTime && data.shipping_address && data.shipping_city && data.shipping_zip_code) {
           try {
             await addressesAPI.create({
@@ -204,11 +199,31 @@ const Checkout = () => {
               is_default: saveAddressAsDefault,
             });
             toast.success('Address saved for next time.');
-          } catch (_) {}
+          } catch (_) {
+            // Non-blocking: order flow should continue even if saving address fails.
+          }
+        }
+
+        // Automatic GCash flow via PayMongo checkout + webhook confirmation.
+        const response = await ordersAPI.placeWithPayment({
+          ...orderData,
+          payment_method: 'gcash',
+        });
+        const qrImageUrl = String(response?.data?.data?.qr_image_url || '').trim();
+        const orderId = response?.data?.data?.order_id;
+        if (!qrImageUrl) {
+          throw new Error('Payment gateway did not return a QR code.');
+        }
+        if (!orderId) {
+          throw new Error('Order was created but payment tracking ID is missing.');
         }
         setCheckoutData(orderData);
+        setGcashCheckoutUrl(String(response?.data?.data?.checkout_url || '').trim());
+        setGcashQrImageUrl(qrImageUrl);
+        setGcashOrderId(orderId);
         setStep(PAYMENT_FORM_STEP);
-        toast.success('Complete your payment below.');
+        toast.info('Scan the QRPh code in your GCash app to pay.');
+        return;
       } else {
         const response = await ordersAPI.create(orderData);
         const order = response.data.data;
@@ -226,7 +241,9 @@ const Checkout = () => {
               is_default: saveAddressAsDefault,
             });
             toast.success('Address saved for next time.');
-          } catch (_) {}
+          } catch (_) {
+            // Non-blocking: order flow should continue even if saving address fails.
+          }
         }
         toast.success('Order placed successfully! Pay on delivery.');
         clearCart();
@@ -240,6 +257,40 @@ const Checkout = () => {
     }
   };
 
+  // Auto-continue when payment is confirmed by webhook.
+  useEffect(() => {
+    if (!gcashOrderId || step !== PAYMENT_FORM_STEP) return;
+    let cancelled = false;
+    const checkStatus = async () => {
+      try {
+        setWaitingForPayment(true);
+        const res = await ordersAPI.getOne(gcashOrderId);
+        const order = res?.data?.data;
+        const paymentStatus = String(order?.payment?.status || '').toLowerCase();
+        if (!cancelled && paymentStatus === 'completed') {
+          toast.success('Payment confirmed. Redirecting back to shop...');
+          clearCart();
+          setCheckoutData(null);
+          setGcashOrderId(null);
+          setGcashCheckoutUrl('');
+          setGcashQrImageUrl('');
+          navigate('/shop');
+        }
+      } catch (_) {
+        // Keep polling while payment gateway/webhook settles.
+      }
+      finally {
+        if (!cancelled) setWaitingForPayment(false);
+      }
+    };
+    checkStatus();
+    const id = setInterval(checkStatus, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [gcashOrderId, clearCart, navigate, step]);
+
   if (cartLoading) {
     return <Loading fullScreen />;
   }
@@ -249,95 +300,14 @@ const Checkout = () => {
     return null;
   }
 
-  useEffect(() => {
-    if (step !== PAYMENT_FORM_STEP || paymentMethod !== 'gcash') return;
-    let cancelled = false;
-    const loadGcashSettings = async () => {
-      try {
-        const methodsRes = await paymentsAPI.getMethods();
-        const gcash = methodsRes?.data?.data?.gcash || {};
-        if (!cancelled) {
-          setGcashQrImageUrl(String(gcash.qr_image_url || '').trim());
-          setGcashReceiverName(String(gcash.receiver_name || 'Ganda Hub Cosmetics'));
-          setGcashReceiverNumber(String(gcash.receiver_number || '').trim());
-        }
-      } catch (_) {
-        if (!cancelled) {
-          setGcashQrImageUrl('');
-        }
-      }
-    };
-
-    loadGcashSettings();
-    return () => {
-      cancelled = true;
-    };
-  }, [step, paymentMethod]);
-
-  // Auto-create GCash order once user reaches QR step (no "I have paid" button).
-  useEffect(() => {
-    if (step !== PAYMENT_FORM_STEP || paymentMethod !== 'gcash' || !checkoutData || gcashOrderId || creatingGcashOrder) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        setCreatingGcashOrder(true);
-        const payload = {
-          ...checkoutData,
-          payment_method: 'gcash',
-        };
-        const response = await ordersAPI.create(payload);
-        const order = response?.data?.data;
-        if (!cancelled && order?.id) {
-          setGcashOrderId(order.id);
-          toast.info('Order created. Waiting for payment confirmation...');
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const message = error.response?.data?.message || 'Failed to prepare GCash order';
-          toast.error(message);
-        }
-      } finally {
-        if (!cancelled) setCreatingGcashOrder(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [step, paymentMethod, checkoutData, gcashOrderId, creatingGcashOrder]);
-
-  // Auto-continue when payment is confirmed.
-  useEffect(() => {
-    if (!gcashOrderId) return;
-    let cancelled = false;
-    const checkStatus = async () => {
-      try {
-        const res = await ordersAPI.getOne(gcashOrderId);
-        const order = res?.data?.data;
-        const paymentStatus = String(order?.payment?.status || '').toLowerCase();
-        const orderStatus = String(order?.status || '').toLowerCase();
-        const isPaid = paymentStatus === 'completed' || ['confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered'].includes(orderStatus);
-        if (!cancelled && isPaid) {
-          toast.success('Payment confirmed. Continuing...');
-          clearCart();
-          setCheckoutData(null);
-          setGcashOrderId(null);
-          navigate(`/orders/${order.id}`);
-        }
-      } catch (_) {}
-    };
-    checkStatus();
-    const id = setInterval(checkStatus, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [gcashOrderId, clearCart, navigate]);
-
   if (step === PAYMENT_FORM_STEP && checkoutData) {
     return (
+      <>
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             type="button"
-            onClick={() => { setStep(PAYMENT_STEP); setCheckoutData(null); setGcashOrderId(null); }}
+            onClick={() => { setStep(PAYMENT_STEP); setCheckoutData(null); setGcashOrderId(null); setGcashCheckoutUrl(''); setGcashQrImageUrl(''); }}
             className="text-primary-600 hover:text-primary-700 text-sm mb-4"
           >
             ← Back to checkout
@@ -347,70 +317,105 @@ const Checkout = () => {
             <h1 className="text-2xl font-display font-bold">Complete Your Payment</h1>
           </div>
           <p className="text-gray-600 mb-8">
-            Scan the GCash QR below and pay the exact amount.
+            Scan this QR with your GCash app and pay the exact amount. We will automatically redirect after confirmation.
           </p>
 
           <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
-              <h2 className="text-lg font-semibold text-gray-800">
-                {paymentMethod === 'gcash' && 'GCash Payment'}
-              </h2>
+            <h2 className="text-lg font-semibold text-gray-800">GCash QR Payment</h2>
 
-              {/* Direct GCash QR payment (no PayMongo redirect) */}
-              {paymentMethod === 'gcash' && (
-                <div className="space-y-4">
-                  <div className="border rounded-lg p-4 bg-gray-50">
-                    {!gcashQrImageUrl ? (
-                      <>
-                        <p className="text-sm text-gray-700">
-                          Pay amount: <span className="font-semibold">{formatPrice(cart?.total)}</span>
-                        </p>
-                        <p className="text-sm text-red-600 mt-2">
-                          GCash QR is not configured yet. Ask admin to set `gcash_qr_image_url` in Settings.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-gray-700 mb-3">
-                          Open your GCash app and scan this merchant QR to pay.
-                        </p>
-                        <div className="flex justify-center my-3">
-                          <img
-                            src={gcashQrImageUrl}
-                            alt="GCash QR"
-                            className="w-64 h-64 rounded-lg border border-gray-200 bg-white p-2"
-                          />
-                        </div>
-                        <p className="text-sm text-gray-700">
-                          Receiver: <span className="font-semibold">{gcashReceiverName}</span>
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          Number: <span className="font-semibold">{gcashReceiverNumber || '-'}</span>
-                        </p>
-                        <p className="text-sm text-gray-700 mt-2">
-                          Amount: <span className="font-semibold">{formatPrice(cart?.total)}</span>
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <p className="text-sm text-gray-700 mb-3">
+                Amount to pay: <span className="font-semibold">{formatPrice(cart?.total || checkoutData?.total || 0)}</span>
+              </p>
               {gcashQrImageUrl ? (
-                <p className="text-sm text-center text-gray-600">
-                  {creatingGcashOrder
-                    ? 'Preparing your order...'
-                    : gcashOrderId
-                      ? 'Waiting for payment confirmation... This will continue automatically.'
-                      : 'Initializing payment...'}
-                </p>
+                <div className="flex justify-center my-3">
+                  <img
+                    src={gcashQrImageUrl}
+                    alt="Scan QRPh to pay"
+                    className="w-[420px] max-w-full rounded-lg border border-gray-200 bg-white p-3"
+                    style={{ imageRendering: 'pixelated' }}
+                  />
+                </div>
               ) : (
-                <p className="text-sm text-center text-gray-600">
-                  Configure GCash QR first in admin settings.
-                </p>
+                <p className="text-sm text-red-600">Could not generate QR. Please go back and try again.</p>
               )}
+              <p className="text-sm text-gray-600 text-center">
+                After scanning, complete the payment in your GCash app.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center">
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => window.open(gcashCheckoutUrl, '_blank', 'noopener,noreferrer')}
+                  disabled={!gcashCheckoutUrl}
+                >
+                  Open payment page
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowFullQr(true)}
+                  disabled={!gcashQrImageUrl}
+                >
+                  Open full QR
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(gcashCheckoutUrl);
+                      toast.success('Payment link copied.');
+                    } catch (_) {
+                      toast.error('Could not copy payment link.');
+                    }
+                  }}
+                  disabled={!gcashCheckoutUrl}
+                >
+                  Copy payment link
+                </Button>
+              </div>
+            </div>
+
+            <p className="text-sm text-center text-gray-600">
+              {waitingForPayment ? 'Checking payment confirmation...' : 'Waiting for payment confirmation...'}
+            </p>
+            <p className="text-xs text-center text-gray-500">
+              This is a true QRPh payment code. Scan it in GCash &quot;Pay QR&quot; to complete payment.
+            </p>
+            <p className="text-xs text-center text-gray-500">
+              You will be redirected automatically once payment is confirmed by webhook.
+            </p>
             </div>
           </div>
       </div>
+
+      {showFullQr && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowFullQr(false)}>
+          <div className="bg-white rounded-xl shadow-xl p-4 max-w-[95vw] max-h-[95vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-gray-800">Scan this QRPh code</h3>
+              <button
+                type="button"
+                onClick={() => setShowFullQr(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={gcashQrImageUrl}
+              alt="Full QRPh code"
+              className="w-[720px] max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 

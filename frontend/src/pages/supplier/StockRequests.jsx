@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FaCheck, FaTimes, FaBox } from 'react-icons/fa';
 import { stockRequestsAPI } from '../../services/api';
 import { toast } from 'react-toastify';
@@ -15,7 +15,7 @@ const StockRequests = () => {
   const [declineRequest, setDeclineRequest] = useState(null);
   const [declineReason, setDeclineReason] = useState('');
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     try {
       setLoading(true);
       const res = await stockRequestsAPI.getAll({ status: filter });
@@ -26,11 +26,11 @@ const StockRequests = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
     fetchRequests();
-  }, [filter]);
+  }, [fetchRequests]);
 
   const handleFulfill = async (req) => {
     try {
@@ -69,8 +69,6 @@ const StockRequests = () => {
   };
 
   if (loading && requests.length === 0) return <Loading />;
-
-  const pendingCount = requests.filter((r) => r.status === 'pending').length;
 
   return (
     <div>

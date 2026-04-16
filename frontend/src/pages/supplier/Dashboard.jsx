@@ -58,8 +58,8 @@ const SupplierDashboard = () => {
   const statCards = stats
     ? [
         {
-          title: 'Total Revenue',
-          value: formatPrice(stats?.totals?.revenue),
+          title: 'Net Payout',
+          value: formatPrice(stats?.totals?.net_payout ?? stats?.totals?.revenue),
           change: '+12%',
           changeType: 'positive',
           icon: FaMoneyBillWave,
@@ -99,10 +99,16 @@ const SupplierDashboard = () => {
   const quickStats = stats
     ? [
         { label: "Today's Orders", value: stats?.today?.orders || 0 },
-        { label: "Today's Revenue", value: formatPrice(stats?.today?.revenue) },
+        { label: "Today's Gross Sales", value: formatPrice(stats?.today?.gross_sales ?? stats?.today?.revenue) },
+        { label: "Today's Net Payout", value: formatPrice(stats?.today?.net_payout) },
         { label: 'Pending stock requests', value: stats?.today?.pending_stock_requests ?? pendingRequests },
         { label: 'This Month Orders', value: stats?.this_month?.orders || 0 },
-        { label: 'This Month Revenue', value: formatPrice(stats?.this_month?.revenue) },
+        { label: 'This Month Gross Sales', value: formatPrice(stats?.this_month?.gross_sales ?? stats?.this_month?.revenue) },
+        { label: 'This Month Net Payout', value: formatPrice(stats?.this_month?.net_payout) },
+        {
+          label: 'Platform Fee Rate',
+          value: `${Math.round((Number(stats?.commission_rate) || 0) * 100)}%`,
+        },
       ]
     : [];
 

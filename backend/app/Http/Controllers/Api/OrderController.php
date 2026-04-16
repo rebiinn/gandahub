@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Store;
+use App\Models\User;
 use App\Services\PayMongoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -53,9 +54,27 @@ class OrderController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
-        // Search by order number
-        if ($request->has('search')) {
-            $query->where('order_number', 'like', "%{$request->search}%");
+        // Broader search for admin/supplier operations screens.
+        $search = trim((string) $request->get('search', ''));
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('order_number', 'like', $like)
+                    ->orWhere('shipping_email', 'like', $like)
+                    ->orWhere('shipping_first_name', 'like', $like)
+                    ->orWhere('shipping_last_name', 'like', $like)
+                    ->orWhereRaw("CONCAT(shipping_first_name, ' ', shipping_last_name) like ?", [$like])
+                    ->orWhereHas('user', function ($uq) use ($like) {
+                        $uq->where('email', 'like', $like)
+                            ->orWhere('first_name', 'like', $like)
+                            ->orWhere('last_name', 'like', $like)
+                            ->orWhereRaw("CONCAT(first_name, ' ', last_name) like ?", [$like]);
+                    })
+                    ->orWhereHas('payment', function ($pq) use ($like) {
+                        $pq->where('payment_method', 'like', $like)
+                            ->orWhere('status', 'like', $like);
+                    });
+            });
         }
 
         $perPage = min($request->get('per_page', 10), 50);
@@ -208,6 +227,8 @@ class OrderController extends Controller
 
                 // Decrease stock
                 $item->product->decreaseStock($item->quantity);
+                // Keep supplier stock aligned for approved marketplace listing flow.
+                $item->product->decrement('supplier_stock_quantity', $item->quantity);
             }
 
             // Create payment record
@@ -339,6 +360,8 @@ class OrderController extends Controller
                     'options' => $item->options,
                 ]);
                 $item->product->decreaseStock($item->quantity);
+                // Keep supplier stock aligned for approved marketplace listing flow.
+                $item->product->decrement('supplier_stock_quantity', $item->quantity);
             }
 
             $payment = Payment::create([
@@ -354,49 +377,50 @@ class OrderController extends Controller
                 'status' => Delivery::STATUS_PENDING,
             ]);
 
-            $frontendUrl = rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/');
-            $checkoutSession = $payMongo->createCheckoutSession([
+            $qrPhPayment = $payMongo->createQrPhPayment([
+                'amount' => (int) round(((float) $cart->total) * 100),
+                'currency' => 'PHP',
+                'description' => 'Payment for order ' . $order->order_number,
                 'billing' => [
                     'name' => trim($request->shipping_first_name . ' ' . $request->shipping_last_name),
-                    'email' => $request->shipping_email,
-                    'phone' => $request->shipping_phone,
+                    'email' => (string) $request->shipping_email,
+                    'phone' => (string) ($request->shipping_phone ?? ''),
+                    'address' => [
+                        'line1' => (string) $request->shipping_address,
+                        'city' => (string) $request->shipping_city,
+                        'state' => (string) ($request->shipping_state ?? ''),
+                        'postal_code' => (string) $request->shipping_zip_code,
+                        'country' => (string) ($request->shipping_country ?? 'PH'),
+                    ],
                 ],
-                'send_email_receipt' => false,
-                'show_description' => true,
-                'show_line_items' => true,
-                'line_items' => [[
-                    'currency' => 'PHP',
-                    'amount' => (int) round(((float) $cart->total) * 100),
-                    'name' => 'Order ' . $order->order_number,
-                    'quantity' => 1,
-                    'description' => 'Payment for order ' . $order->order_number,
-                ]],
-                'payment_method_types' => ['gcash'],
-                'description' => 'Payment for order ' . $order->order_number,
-                'statement_descriptor' => 'GANDA HUB',
-                'reference_number' => (string) $order->order_number,
-                'success_url' => $frontendUrl . '/orders/' . $order->id . '?payment=success',
-                'cancel_url' => $frontendUrl . '/checkout?payment=cancelled',
                 'metadata' => [
                     'order_id' => (string) $order->id,
                     'payment_id' => (string) $payment->id,
                     'user_id' => (string) $user->id,
+                    'order_number' => (string) $order->order_number,
                 ],
             ]);
 
-            $sessionId = data_get($checkoutSession, 'data.id');
-            $checkoutUrl = data_get($checkoutSession, 'data.attributes.checkout_url');
-            if (!$sessionId || !$checkoutUrl) {
-                throw new \RuntimeException('PayMongo did not return checkout session details.');
+            $paymentIntentId = (string) data_get($qrPhPayment, 'payment_intent_id', '');
+            $paymentMethodId = (string) data_get($qrPhPayment, 'payment_method_id', '');
+            $qrImageUrl = (string) data_get($qrPhPayment, 'qr_image_url', '');
+            $qrCodeId = (string) data_get($qrPhPayment, 'qr_code_id', '');
+            if ($paymentIntentId === '' || $qrImageUrl === '') {
+                throw new \RuntimeException('PayMongo did not return QR payment details.');
             }
 
             $payment->update([
                 'payment_details' => [
                     'provider' => 'paymongo',
-                    'checkout_session_id' => $sessionId,
-                    'checkout_url' => $checkoutUrl,
+                    'flow' => 'qrph',
+                    'payment_intent_id' => $paymentIntentId,
+                    'payment_method_id' => $paymentMethodId,
+                    'qr_image_url' => $qrImageUrl,
+                    'qr_code_id' => $qrCodeId,
+                    'next_action_type' => data_get($qrPhPayment, 'next_action_type'),
+                    'expires_at' => data_get($qrPhPayment, 'expires_at'),
                 ],
-                'transaction_id' => $sessionId,
+                'transaction_id' => $paymentIntentId,
             ]);
 
             DB::commit();
@@ -404,8 +428,11 @@ class OrderController extends Controller
             return $this->successResponse([
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
-                'checkout_url' => $checkoutUrl,
-            ], 'Redirecting to secure payment', 201);
+                'payment_intent_id' => $paymentIntentId,
+                'qr_image_url' => $qrImageUrl,
+                'qr_code_id' => $qrCodeId,
+                'expires_at' => data_get($qrPhPayment, 'expires_at'),
+            ], 'QR payment created. Awaiting confirmation.', 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return $this->errorResponse('Failed to place order: ' . $e->getMessage(), 500);
@@ -476,7 +503,7 @@ class OrderController extends Controller
             return $this->errorResponse('Supplier store not found', 404);
         }
 
-        $order = Order::with(['items.product', 'delivery'])->find($id);
+        $order = Order::with(['items.product', 'delivery', 'payment', 'user'])->find($id);
         if (! $order) {
             return $this->errorResponse('Order not found', 404);
         }
@@ -505,22 +532,32 @@ class OrderController extends Controller
         if ($targetStatus === Order::STATUS_CANCELLED) {
             foreach ($order->items as $item) {
                 $item->product->increaseStock($item->quantity);
+                $item->product->increment('supplier_stock_quantity', $item->quantity);
             }
-            if ($order->payment && $order->payment->status !== Payment::STATUS_COMPLETED) {
-                $order->payment->update(['status' => Payment::STATUS_CANCELLED]);
+            if ($order->delivery && !in_array($order->delivery->status, [Delivery::STATUS_DELIVERED, Delivery::STATUS_FAILED, Delivery::STATUS_RETURNED], true)) {
+                $order->delivery->updateDeliveryStatus(Delivery::STATUS_FAILED, 'Order cancelled by seller');
             }
+            $this->settleCancellationPayment($order, 'seller_cancelled_order', 'Refunded after seller cancellation');
         }
 
         return $this->successResponse($order->fresh(['items', 'payment', 'delivery']), 'Order status updated');
     }
 
     /**
-     * Cancel order (Customer can cancel pending/confirmed orders).
+     * Customer cancellation request (seller approval required).
      */
-    public function cancel($id)
+    public function cancel(Request $request, $id)
     {
+        $validator = Validator::make($request->all(), [
+            'reason' => 'required|in:delivery_too_slow,found_cheaper,wrong_address,changed_mind,ordered_by_mistake,other',
+            'details' => 'nullable|string|max:500',
+        ]);
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', 422, $validator->errors());
+        }
+
         $user = auth()->user();
-        $order = Order::find($id);
+        $order = Order::with(['items.product.store', 'payment'])->find($id);
 
         if (!$order) {
             return $this->errorResponse('Order not found', 404);
@@ -530,23 +567,194 @@ class OrderController extends Controller
             return $this->errorResponse('Unauthorized', 403);
         }
 
-        if (!$order->canBeCancelled()) {
-            return $this->errorResponse('Order cannot be cancelled at this stage', 400);
+        if ($order->status !== Order::STATUS_PENDING) {
+            return $this->errorResponse(
+                'Cancellation is only available before the seller confirms your order.',
+                400
+            );
         }
 
-        // Restore stock
-        foreach ($order->items as $item) {
-            $item->product->increaseStock($item->quantity);
+        if ($order->status === Order::STATUS_CANCEL_REQUESTED) {
+            return $this->errorResponse('Cancellation request already sent. Waiting for seller approval.', 422);
         }
 
-        $order->updateStatus(Order::STATUS_CANCELLED);
+        $details = trim((string) $request->input('details', ''));
+        $reasonCode = (string) $request->input('reason');
+        $reasonMap = [
+            'delivery_too_slow' => 'Delivery is taking too long',
+            'found_cheaper' => 'Found a cheaper alternative',
+            'wrong_address' => 'Wrong shipping address selected',
+            'changed_mind' => 'Changed my mind',
+            'ordered_by_mistake' => 'Ordered by mistake',
+            'other' => 'Other reason',
+        ];
+        $reasonLabel = $reasonMap[$reasonCode] ?? 'Other reason';
 
-        // Update payment status
-        if ($order->payment) {
-            $order->payment->update(['status' => Payment::STATUS_CANCELLED]);
+        $order->update([
+            'status' => Order::STATUS_CANCEL_REQUESTED,
+            'cancellation_previous_status' => $order->status,
+            'cancellation_reason' => $reasonLabel . ($details !== '' ? ' - ' . $details : ''),
+            'cancellation_requested_at' => now(),
+            'cancellation_reviewed_at' => null,
+            'cancellation_review_note' => null,
+            'cancellation_reviewed_by' => null,
+        ]);
+
+        // Notify each store involved using existing customer<->store conversation.
+        $storeIds = $order->items->map(fn ($item) => $item->product?->store_id)->filter()->unique();
+        foreach ($storeIds as $storeId) {
+            $conversation = Conversation::firstOrCreate(
+                ['user_id' => $order->user_id, 'store_id' => $storeId],
+                ['order_id' => $order->id]
+            );
+            Message::create([
+                'conversation_id' => $conversation->id,
+                'sender_type' => Message::SENDER_CUSTOMER,
+                'sender_id' => $order->user_id,
+                'body' => "Cancellation request for order {$order->order_number}. Reason: {$reasonLabel}" . ($details !== '' ? " ({$details})" : '') . ". Please review and approve/reject.",
+            ]);
         }
 
-        return $this->successResponse($order->fresh(['items', 'payment', 'delivery']), 'Order cancelled successfully');
+        return $this->successResponse(
+            $order->fresh(['items', 'payment', 'delivery']),
+            'Cancellation request sent to seller. Order will be refunded after seller approval.'
+        );
+    }
+
+    public function supplierApproveCancelRequest(Request $request, $id)
+    {
+        $user = auth()->user();
+        $store = Store::where('user_id', $user->id)->first();
+        if (! $store) {
+            return $this->errorResponse('Supplier store not found', 404);
+        }
+
+        $order = Order::with(['items.product', 'payment', 'delivery', 'user'])->find($id);
+        if (! $order) {
+            return $this->errorResponse('Order not found', 404);
+        }
+
+        $isSupplierOrder = $order->items->contains(function ($item) use ($store) {
+            return $item->product && (int) $item->product->store_id === (int) $store->id;
+        });
+        if (! $isSupplierOrder) {
+            return $this->errorResponse('Unauthorized', 403);
+        }
+
+        if ($order->status !== Order::STATUS_CANCEL_REQUESTED) {
+            return $this->errorResponse('No pending cancellation request for this order', 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            foreach ($order->items as $item) {
+                $item->product->increaseStock($item->quantity);
+                $item->product->increment('supplier_stock_quantity', $item->quantity);
+            }
+
+            if ($order->delivery) {
+                $order->delivery->updateDeliveryStatus(Delivery::STATUS_FAILED, 'Cancelled by seller approval');
+            }
+
+            $this->settleCancellationPayment(
+                $order,
+                'seller_approved_cancellation',
+                'Refunded after seller-approved cancellation request'
+            );
+            $finalPaymentStatus = $order->payment?->fresh()?->status ?? $order->payment?->status;
+
+            $order->update([
+                'status' => Order::STATUS_CANCELLED,
+                'cancellation_reviewed_at' => now(),
+                'cancellation_reviewed_by' => $user->id,
+                'cancellation_review_note' => 'Approved by seller',
+            ]);
+
+            // Notify customer in conversation.
+            $conversation = Conversation::firstOrCreate(
+                ['user_id' => $order->user_id, 'store_id' => $store->id],
+                ['order_id' => $order->id]
+            );
+            Message::create([
+                'conversation_id' => $conversation->id,
+                'sender_type' => Message::SENDER_STORE,
+                'sender_id' => $store->id,
+                'body' => "Your cancellation request for order {$order->order_number} has been approved. " .
+                    ($finalPaymentStatus === Payment::STATUS_REFUNDED ? 'Your payment was refunded.' : 'No refund was needed.'),
+            ]);
+
+            DB::commit();
+            return $this->successResponse(
+                $order->fresh(['items', 'payment', 'delivery']),
+                'Cancellation approved and refund processed.'
+            );
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->errorResponse('Failed to approve cancellation: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function supplierRejectCancelRequest(Request $request, $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'note' => 'nullable|string|max:500',
+        ]);
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', 422, $validator->errors());
+        }
+
+        $user = auth()->user();
+        $store = Store::where('user_id', $user->id)->first();
+        if (! $store) {
+            return $this->errorResponse('Supplier store not found', 404);
+        }
+
+        $order = Order::with(['items.product', 'payment', 'delivery'])->find($id);
+        if (! $order) {
+            return $this->errorResponse('Order not found', 404);
+        }
+
+        $isSupplierOrder = $order->items->contains(function ($item) use ($store) {
+            return $item->product && (int) $item->product->store_id === (int) $store->id;
+        });
+        if (! $isSupplierOrder) {
+            return $this->errorResponse('Unauthorized', 403);
+        }
+
+        if ($order->status !== Order::STATUS_CANCEL_REQUESTED) {
+            return $this->errorResponse('No pending cancellation request for this order', 422);
+        }
+
+        $restoreStatus = in_array((string) $order->cancellation_previous_status, [
+            Order::STATUS_PENDING,
+            Order::STATUS_CONFIRMED,
+            Order::STATUS_PROCESSING,
+        ], true) ? $order->cancellation_previous_status : Order::STATUS_PROCESSING;
+
+        $note = trim((string) $request->input('note', ''));
+        $order->update([
+            'status' => $restoreStatus,
+            'cancellation_reviewed_at' => now(),
+            'cancellation_reviewed_by' => $user->id,
+            'cancellation_review_note' => $note !== '' ? $note : 'Cancellation request rejected by seller',
+        ]);
+
+        $conversation = Conversation::firstOrCreate(
+            ['user_id' => $order->user_id, 'store_id' => $store->id],
+            ['order_id' => $order->id]
+        );
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'sender_type' => Message::SENDER_STORE,
+            'sender_id' => $store->id,
+            'body' => "Your cancellation request for order {$order->order_number} was rejected." .
+                ($note !== '' ? " Note from seller: {$note}" : ''),
+        ]);
+
+        return $this->successResponse(
+            $order->fresh(['items', 'payment', 'delivery']),
+            'Cancellation request rejected.'
+        );
     }
 
     /**
@@ -568,6 +776,51 @@ class OrderController extends Controller
             'delivery' => $order->delivery,
             'shipped_at' => $order->shipped_at,
             'delivered_at' => $order->delivered_at,
+        ]);
+    }
+
+    /**
+     * Normalize payment outcomes when an order is cancelled.
+     * - Paid payments should become refunded.
+     * - Unpaid payments should become cancelled.
+     */
+    protected function settleCancellationPayment(Order $order, string $refundReason, string $refundNote): void
+    {
+        $payment = $order->payment;
+        if (! $payment || $payment->status === Payment::STATUS_REFUNDED) {
+            return;
+        }
+
+        $method = strtolower((string) $payment->payment_method);
+        $isPaid = $payment->status === Payment::STATUS_COMPLETED || ! is_null($payment->paid_at);
+
+        if (! $isPaid) {
+            $payment->update([
+                'status' => Payment::STATUS_CANCELLED,
+                'paid_at' => null,
+            ]);
+            return;
+        }
+
+        if ($method === Payment::METHOD_GCASH) {
+            $customer = User::where('id', $order->user_id)->lockForUpdate()->first();
+            if ($customer) {
+                $balance = (float) $customer->gcash_balance;
+                $refundAmount = (float) $payment->amount;
+                $customer->update([
+                    'gcash_balance' => round($balance + $refundAmount, 2),
+                ]);
+            }
+        }
+
+        $payment->update([
+            'status' => Payment::STATUS_REFUNDED,
+            'notes' => $refundNote,
+            'payment_details' => array_merge($payment->payment_details ?? [], [
+                'refund_reason' => $refundReason,
+                'refund_amount' => (float) $payment->amount,
+                'refund_at' => now()->toDateTimeString(),
+            ]),
         ]);
     }
 

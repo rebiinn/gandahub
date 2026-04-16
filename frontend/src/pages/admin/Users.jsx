@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaToggleOn, FaToggleOff } from 'react-icons/fa';
-import { usersAPI } from '../../services/api';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaToggleOn, FaToggleOff, FaEye, FaUsers, FaUserCheck, FaUserSlash } from 'react-icons/fa';
+import { usersAPI, sellerApplicationsAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
@@ -9,6 +9,14 @@ import Loading from '../../components/common/Loading';
 import Pagination from '../../components/common/Pagination';
 import Badge from '../../components/common/Badge';
 
+const STAFF_EMAIL_DOMAIN = 'gandahub.com';
+const toStaffEmail = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  const localPart = raw.includes('@') ? raw.split('@')[0] : raw;
+  return `${localPart}@${STAFF_EMAIL_DOMAIN}`;
+};
+
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +24,13 @@ const Users = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
+  const [sellerApplications, setSellerApplications] = useState([]);
+  const [loadingSellerApplications, setLoadingSellerApplications] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailUser, setDetailUser] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -27,16 +41,36 @@ const Users = () => {
     is_active: true,
   });
 
-  useEffect(() => {
-    fetchUsers();
+  const fetchSellerApplications = useCallback(async () => {
+    try {
+      setLoadingSellerApplications(true);
+      const response = await sellerApplicationsAPI.getAll({ status: 'pending', per_page: 10 });
+      setSellerApplications(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch seller applications:', error);
+    } finally {
+      setLoadingSellerApplications(false);
+    }
   }, []);
 
-  const fetchUsers = async (page = 1) => {
+  useEffect(() => {
+    fetchSellerApplications();
+  }, [fetchSellerApplications]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchUsers(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, roleFilter, statusFilter, fetchUsers]);
+
+  const fetchUsers = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       const params = { page };
       if (search) params.search = search;
       if (roleFilter) params.role = roleFilter;
+      if (statusFilter) params.active = statusFilter === 'active';
       const response = await usersAPI.getAll(params);
       setUsers(response.data.data || []);
       setMeta(response.data.meta || { current_page: 1, last_page: 1 });
@@ -45,11 +79,17 @@ const Users = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [search, roleFilter, statusFilter]);
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchUsers();
+    fetchUsers(1);
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setRoleFilter('');
+    setStatusFilter('');
   };
 
   const openModal = (user = null) => {
@@ -83,6 +123,9 @@ const Users = () => {
     e.preventDefault();
     try {
       const data = { ...formData };
+      if (['rider', 'supplier'].includes(data.role)) {
+        data.email = toStaffEmail(data.email);
+      }
       if (!data.password) delete data.password;
       
       if (editingUser) {
@@ -123,12 +166,51 @@ const Users = () => {
     }
   };
 
+  const approveSellerApplication = async (id) => {
+    try {
+      await sellerApplicationsAPI.approve(id, {});
+      toast.success('Seller application approved. Supplier account and store created.');
+      fetchSellerApplications();
+      fetchUsers(meta.current_page);
+    } catch (error) {
+      const message = error.response?.data?.message || 'Failed to approve seller application';
+      toast.error(message);
+    }
+  };
+
+  const rejectSellerApplication = async (id) => {
+    const review_note = window.prompt('Optional reason for rejection:', '') || '';
+    try {
+      await sellerApplicationsAPI.reject(id, { review_note });
+      toast.success('Seller application rejected');
+      fetchSellerApplications();
+    } catch (error) {
+      const message = error.response?.data?.message || 'Failed to reject seller application';
+      toast.error(message);
+    }
+  };
+
+  const openDetailModal = async (id) => {
+    try {
+      setDetailLoading(true);
+      setShowDetailModal(true);
+      const response = await usersAPI.getOne(id);
+      setDetailUser(response.data?.data || null);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to load user details');
+      setShowDetailModal(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const getRoleBadge = (role) => {
     const variants = {
       admin: 'danger',
       customer: 'primary',
       rider: 'info',
       supplier: 'success',
+      logistics: 'warning',
     };
     return <Badge variant={variants[role] || 'default'}>{role}</Badge>;
   };
@@ -141,6 +223,15 @@ const Users = () => {
     });
   };
 
+  const stats = useMemo(() => {
+    return {
+      totalOnPage: users.length,
+      active: users.filter((u) => Boolean(u.is_active)).length,
+      inactive: users.filter((u) => !u.is_active).length,
+      staff: users.filter((u) => ['supplier', 'rider', 'logistics'].includes(u.role)).length,
+    };
+  }, [users]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -149,6 +240,37 @@ const Users = () => {
           <FaPlus />
           Add User
         </Button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-gray-500 text-sm">
+            <FaUsers />
+            Users on this page
+          </div>
+          <p className="text-2xl font-bold text-gray-800 mt-1">{stats.totalOnPage}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-gray-500 text-sm">
+            <FaUserCheck />
+            Active
+          </div>
+          <p className="text-2xl font-bold text-green-600 mt-1">{stats.active}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-gray-500 text-sm">
+            <FaUserSlash />
+            Inactive
+          </div>
+          <p className="text-2xl font-bold text-red-600 mt-1">{stats.inactive}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="flex items-center gap-2 text-gray-500 text-sm">
+            <FaUsers />
+            Staff (supplier/rider/logistics)
+          </div>
+          <p className="text-2xl font-bold text-primary-600 mt-1">{stats.staff}</p>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -174,9 +296,22 @@ const Users = () => {
             <option value="customer">Customer</option>
             <option value="rider">Rider</option>
             <option value="supplier">Supplier</option>
+            <option value="logistics">Logistics Partner</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
           </select>
           <Button type="submit" variant="primary">
             Search
+          </Button>
+          <Button type="button" variant="outline" onClick={clearFilters}>
+            Clear
           </Button>
         </form>
       </div>
@@ -199,7 +334,13 @@ const Users = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {users.map((user) => (
+                {users.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                      No users found for the selected filters.
+                    </td>
+                  </tr>
+                ) : users.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -233,6 +374,13 @@ const Users = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openDetailModal(user.id)}
+                          className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg"
+                          title="View details"
+                        >
+                          <FaEye />
+                        </button>
                         <button
                           onClick={() => openModal(user)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
@@ -287,10 +435,11 @@ const Users = () => {
           </div>
 
           <Input
-            label="Email"
-            type="email"
+            label={['rider', 'supplier'].includes(formData.role) ? 'Email ID' : 'Email'}
+            type={['rider', 'supplier'].includes(formData.role) ? 'text' : 'email'}
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            helperText={['rider', 'supplier'].includes(formData.role) ? `@${STAFF_EMAIL_DOMAIN} is added automatically.` : undefined}
             required
           />
 
@@ -319,6 +468,7 @@ const Users = () => {
               <option value="rider">Rider</option>
               <option value="admin">Admin</option>
               <option value="supplier">Supplier</option>
+              <option value="logistics">Logistics Partner</option>
             </select>
           </div>
 
@@ -342,6 +492,123 @@ const Users = () => {
           </div>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false);
+          setDetailUser(null);
+        }}
+        title="User Details"
+      >
+        {detailLoading ? (
+          <Loading />
+        ) : detailUser ? (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-gray-500">Name</p>
+                <p className="font-medium text-gray-800">{detailUser.first_name} {detailUser.last_name}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-gray-500">Role</p>
+                <div className="mt-1">{getRoleBadge(detailUser.role)}</div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-gray-500">Email</p>
+                <p className="font-medium text-gray-800 break-all">{detailUser.email}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-gray-500">Phone</p>
+                <p className="font-medium text-gray-800">{detailUser.phone || '-'}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-gray-500">Orders</p>
+                <p className="font-medium text-gray-800">{detailUser.orders_count ?? 0}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-gray-500">Reviews</p>
+                <p className="font-medium text-gray-800">{detailUser.reviews_count ?? 0}</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-gray-500">Joined</p>
+              <p className="font-medium text-gray-800">{detailUser.created_at ? formatDate(detailUser.created_at) : '-'}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-500">No user details available.</p>
+        )}
+      </Modal>
+
+      <div className="mt-8 bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b bg-gray-50">
+          <h2 className="text-lg font-semibold text-gray-800">Pending Seller Applications</h2>
+          <p className="text-sm text-gray-600">Approve to create supplier login and store automatically.</p>
+        </div>
+        {loadingSellerApplications ? (
+          <Loading />
+        ) : sellerApplications.length === 0 ? (
+          <p className="p-6 text-sm text-gray-500">No pending seller applications.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Store</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Applicant</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {sellerApplications.map((application) => (
+                  <tr key={application.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      <p className="font-medium text-gray-800">{application.store_name}</p>
+                      <p className="text-xs text-gray-500">{application.message || '-'}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="font-medium text-gray-800">{application.first_name} {application.last_name}</p>
+                      <p className="text-sm text-gray-500">{application.email}</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{application.phone || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">
+                      {[application.address, application.city, application.state, application.zip_code].filter(Boolean).join(', ') || '-'}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {application.document_url ? (
+                        <a
+                          href={application.document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary-600 hover:text-primary-700 underline"
+                        >
+                          {application.document_name || 'View document'}
+                        </a>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="primary" onClick={() => approveSellerApplication(application.id)}>
+                          Approve
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => rejectSellerApplication(application.id)}>
+                          Reject
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

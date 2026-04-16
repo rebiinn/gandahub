@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FaMapMarkerAlt, FaPhone, FaCheckCircle, FaTruck } from 'react-icons/fa';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { FaMapMarkerAlt, FaPhone, FaCheckCircle, FaTruck, FaLocationArrow, FaMapMarkedAlt } from 'react-icons/fa';
 import { deliveriesAPI } from '../../services/api';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
@@ -22,12 +22,21 @@ const Deliveries = () => {
     recipient_name: '',
     notes: '',
   });
+  const [trackingDeliveryId, setTrackingDeliveryId] = useState(null);
+  const [gpsSyncing, setGpsSyncing] = useState(false);
+  const [lastGpsSyncedAt, setLastGpsSyncedAt] = useState(null);
+  const gpsWatchIdRef = useRef(null);
+  const lastGpsSentAtRef = useRef(0);
 
   useEffect(() => {
-    fetchDeliveries();
-  }, [statusFilter]);
+    return () => {
+      if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      }
+    };
+  }, []);
 
-  const fetchDeliveries = async (page = 1) => {
+  const fetchDeliveries = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       const params = { page };
@@ -44,7 +53,11 @@ const Deliveries = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
+
+  useEffect(() => {
+    fetchDeliveries();
+  }, [fetchDeliveries]);
 
   const viewDelivery = async (id) => {
     try {
@@ -105,6 +118,105 @@ const Deliveries = () => {
       const message = error.response?.data?.message || 'Failed to claim delivery';
       toast.error(message);
     }
+  };
+
+  const getDestinationAddress = (delivery) => {
+    const address = delivery?.order?.shipping_address || '';
+    const city = delivery?.order?.shipping_city || '';
+    const state = delivery?.order?.shipping_state || '';
+    const zip = delivery?.order?.shipping_zip_code || '';
+    return [address, city, state, zip, 'Philippines'].filter(Boolean).join(', ');
+  };
+
+  const openCustomerNavigation = (delivery) => {
+    const destination = getDestinationAddress(delivery);
+    if (!destination) {
+      toast.error('No customer address found for this delivery');
+      return;
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const origin = `${position.coords.latitude},${position.coords.longitude}`;
+          const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+          window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+        },
+        () => {
+          const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+          window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+      return;
+    }
+
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const stopLiveGpsTracking = () => {
+    if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      gpsWatchIdRef.current = null;
+    }
+    setTrackingDeliveryId(null);
+    setGpsSyncing(false);
+    toast.info('Live GPS tracking stopped');
+  };
+
+  const startLiveGpsTracking = (delivery) => {
+    if (!navigator.geolocation) {
+      toast.error('GPS is not supported on this device/browser');
+      return;
+    }
+    if (!delivery?.id) {
+      toast.error('Invalid delivery selected for GPS tracking');
+      return;
+    }
+
+    if (gpsWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      gpsWatchIdRef.current = null;
+    }
+
+    setTrackingDeliveryId(delivery.id);
+    setGpsSyncing(true);
+    toast.info('Live GPS tracking started');
+
+    gpsWatchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        const now = Date.now();
+        if (now - lastGpsSentAtRef.current < 10000) {
+          return; // limit backend updates to every 10 seconds
+        }
+        lastGpsSentAtRef.current = now;
+
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const locationLabel = `Rider GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+
+        try {
+          await deliveriesAPI.riderUpdateLocation(delivery.id, {
+            latitude,
+            longitude,
+            location: locationLabel,
+          });
+          setLastGpsSyncedAt(new Date().toISOString());
+        } catch (error) {
+          console.error('GPS sync failed', error);
+        }
+      },
+      (error) => {
+        stopLiveGpsTracking();
+        toast.error(error?.message || 'Unable to track GPS location');
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 10000,
+      }
+    );
   };
 
   const formatDate = (date) => {
@@ -201,6 +313,12 @@ const Deliveries = () => {
                     {getStatusBadge(delivery.status)}
                     <span className="text-sm text-gray-500">{formatDate(delivery.created_at)}</span>
                   </div>
+                  {trackingDeliveryId === delivery.id && (
+                    <p className="text-xs text-emerald-700 mb-2">
+                      Live GPS tracking active
+                      {lastGpsSyncedAt ? ` - last sync ${formatDate(lastGpsSyncedAt)}` : ''}
+                    </p>
+                  )}
                   
                   <div className="text-sm text-gray-600 space-y-1">
                     <p>Order: {delivery.order?.order_number}</p>
@@ -219,6 +337,26 @@ const Deliveries = () => {
                   <Button variant="outline" size="sm" onClick={() => viewDelivery(delivery.id)}>
                     View Details
                   </Button>
+                  <Button variant="outline" size="sm" onClick={() => openCustomerNavigation(delivery)}>
+                    <FaMapMarkedAlt />
+                    Navigate
+                  </Button>
+                  {trackingDeliveryId === delivery.id ? (
+                    <Button variant="warning" size="sm" onClick={stopLiveGpsTracking}>
+                      <FaLocationArrow />
+                      Stop GPS
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={gpsSyncing && trackingDeliveryId !== null}
+                      onClick={() => startLiveGpsTracking(delivery)}
+                    >
+                      <FaLocationArrow />
+                      Start GPS
+                    </Button>
+                  )}
                   
                   {delivery.status !== 'delivered' && delivery.status !== 'failed' && (
                     <>
@@ -305,6 +443,12 @@ const Deliveries = () => {
               <h4 className="font-medium text-gray-800 mb-2">Delivery Address</h4>
               <p className="text-gray-600">{selectedDelivery.order?.shipping_address}</p>
               <p className="text-gray-600">{selectedDelivery.order?.shipping_city}, {selectedDelivery.order?.shipping_zip_code}</p>
+              <div className="mt-3">
+                <Button size="sm" variant="outline" onClick={() => openCustomerNavigation(selectedDelivery)}>
+                  <FaMapMarkedAlt />
+                  Open in Maps
+                </Button>
+              </div>
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg">
@@ -327,6 +471,13 @@ const Deliveries = () => {
                 <span className="text-gray-500">Attempts:</span>
                 <span className="ml-2 font-medium">{selectedDelivery.delivery_attempts}</span>
               </div>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700">
+              <h4 className="font-medium text-gray-800 mb-2">Rider GPS (latest)</h4>
+              <p>Location: {selectedDelivery.current_location || '-'}</p>
+              <p>Latitude: {selectedDelivery.current_lat || '-'}</p>
+              <p>Longitude: {selectedDelivery.current_lng || '-'}</p>
             </div>
           </div>
         )}

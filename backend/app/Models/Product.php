@@ -27,6 +27,7 @@ class Product extends Model
         'short_description',
         'price',
         'sale_price',
+        'is_on_sale',
         'supply_price',
         'stock_quantity',
         'inventory_stock',
@@ -50,6 +51,7 @@ class Product extends Model
     protected $casts = [
         'price' => 'decimal:2',
         'sale_price' => 'decimal:2',
+        'is_on_sale' => 'boolean',
         'supply_price' => 'decimal:2',
         'stock_quantity' => 'integer',
         'inventory_stock' => 'integer',
@@ -152,7 +154,11 @@ class Product extends Model
      */
     public function getEffectivePriceAttribute()
     {
-        return $this->sale_price ?? $this->price;
+        if ($this->is_on_sale && !is_null($this->sale_price) && $this->sale_price < $this->price) {
+            return $this->sale_price;
+        }
+
+        return $this->price;
     }
 
     /**
@@ -160,7 +166,7 @@ class Product extends Model
      */
     public function getIsOnSaleAttribute(): bool
     {
-        return !is_null($this->sale_price) && $this->sale_price < $this->price;
+        return (bool) $this->attributes['is_on_sale'];
     }
 
     /**
@@ -240,7 +246,8 @@ class Product extends Model
      */
     public function scopeOnSale($query)
     {
-        return $query->whereNotNull('sale_price')
+        return $query->where('is_on_sale', true)
+            ->whereNotNull('sale_price')
             ->whereColumn('sale_price', '<', 'price');
     }
 }

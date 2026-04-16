@@ -12,6 +12,7 @@ use App\Models\Report;
 use App\Models\Review;
 use App\Models\StockRequest;
 use App\Models\Store;
+use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,15 @@ use Illuminate\Support\Facades\Validator;
 
 class ReportController extends Controller
 {
+    protected function marketplaceCommissionRate(): float
+    {
+        $settingValue = SystemSetting::get('marketplace_commission_rate', null);
+        $rate = $settingValue !== null
+            ? (float) $settingValue
+            : (float) config('marketplace.commission_rate', 0.05);
+        return max(0.0, min($rate, 1.0));
+    }
+
     /**
      * Get all reports.
      */
@@ -114,18 +124,21 @@ class ReportController extends Controller
      */
     protected function generateSalesReport($dateFrom, $dateTo): array
     {
-        $orders = Order::whereBetween('created_at', [$dateFrom, $dateTo])
-            ->where('status', 'delivered');
+        $orders = Order::whereBetween('orders.created_at', [$dateFrom, $dateTo])
+            ->where('orders.status', 'delivered');
 
         return [
             'total_orders' => $orders->count(),
-            'total_revenue' => $orders->sum('total'),
-            'average_order_value' => $orders->avg('total'),
-            'total_items_sold' => $orders->join('order_items', 'orders.id', '=', 'order_items.order_id')
+            'total_revenue' => $orders->sum('orders.total'),
+            'average_order_value' => $orders->avg('orders.total'),
+            'total_items_sold' => Order::query()
+                ->whereBetween('orders.created_at', [$dateFrom, $dateTo])
+                ->where('orders.status', 'delivered')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
                 ->sum('order_items.quantity'),
-            'daily_sales' => Order::whereBetween('created_at', [$dateFrom, $dateTo])
-                ->where('status', 'delivered')
-                ->select(DB::raw('DATE(created_at) as date'), DB::raw('SUM(total) as total'))
+            'daily_sales' => Order::whereBetween('orders.created_at', [$dateFrom, $dateTo])
+                ->where('orders.status', 'delivered')
+                ->select(DB::raw('DATE(orders.created_at) as date'), DB::raw('SUM(orders.total) as total'))
                 ->groupBy('date')
                 ->orderBy('date')
                 ->get(),
@@ -301,19 +314,47 @@ class ReportController extends Controller
     {
         $today = now()->startOfDay();
         $thisMonth = now()->startOfMonth();
+        $commissionRate = $this->marketplaceCommissionRate();
+        $pendingDeliveryAssignments = Delivery::query()
+            ->whereNull('rider_id')
+            ->whereNotNull('station_arrived_at')
+            ->whereIn('status', [Delivery::STATUS_IN_TRANSIT, Delivery::STATUS_ASSIGNED])
+            ->whereHas('order', function ($q) {
+                $q->whereNotIn('status', [
+                    Order::STATUS_CANCELLED,
+                    Order::STATUS_REFUNDED,
+                    Order::STATUS_DELIVERED,
+                ]);
+            })
+            ->count();
+
+        $todayGmv = (float) Order::whereDate('created_at', $today)
+            ->where('status', 'delivered')
+            ->sum('total');
+        $monthGmv = (float) Order::where('created_at', '>=', $thisMonth)
+            ->where('status', 'delivered')
+            ->sum('total');
+        $totalGmv = (float) Order::where('status', 'delivered')->sum('total');
+
+        $todayProfit = round($todayGmv * $commissionRate, 2);
+        $monthProfit = round($monthGmv * $commissionRate, 2);
+        $totalProfit = round($totalGmv * $commissionRate, 2);
 
         return $this->successResponse([
+            'commission_rate' => $commissionRate,
             'today' => [
                 'orders' => Order::whereDate('created_at', $today)->count(),
-                'revenue' => Order::whereDate('created_at', $today)
-                    ->where('status', 'delivered')->sum('total'),
+                'revenue' => $todayGmv,
+                'platform_gmv' => $todayGmv,
+                'platform_profit' => $todayProfit,
                 'new_customers' => User::where('role', 'customer')
                     ->whereDate('created_at', $today)->count(),
             ],
             'this_month' => [
                 'orders' => Order::where('created_at', '>=', $thisMonth)->count(),
-                'revenue' => Order::where('created_at', '>=', $thisMonth)
-                    ->where('status', 'delivered')->sum('total'),
+                'revenue' => $monthGmv,
+                'platform_gmv' => $monthGmv,
+                'platform_profit' => $monthProfit,
                 'new_customers' => User::where('role', 'customer')
                     ->where('created_at', '>=', $thisMonth)->count(),
             ],
@@ -321,11 +362,13 @@ class ReportController extends Controller
                 'products' => Product::count(),
                 'customers' => User::where('role', 'customer')->count(),
                 'orders' => Order::count(),
-                'revenue' => Order::where('status', 'delivered')->sum('total'),
+                'revenue' => $totalGmv,
+                'platform_gmv' => $totalGmv,
+                'platform_profit' => $totalProfit,
             ],
             'pending' => [
                 'orders' => Order::where('status', 'pending')->count(),
-                'deliveries' => Delivery::whereIn('status', ['pending', 'assigned'])->count(),
+                'deliveries' => $pendingDeliveryAssignments,
                 'reviews' => \App\Models\Review::where('is_approved', false)->count(),
             ],
             'low_stock_products' => Product::whereColumn('stock_quantity', '<=', 'low_stock_threshold')
@@ -345,21 +388,32 @@ class ReportController extends Controller
 
         $store = Store::where('user_id', $user->id)->first();
         if (!$store) {
+            $commissionRate = $this->marketplaceCommissionRate();
             return $this->successResponse([
+                'commission_rate' => $commissionRate,
                 'today' => [
                     'orders' => 0,
                     'revenue' => 0,
+                    'gross_sales' => 0,
+                    'platform_fee' => 0,
+                    'net_payout' => 0,
                     'pending_stock_requests' => 0,
                 ],
                 'this_month' => [
                     'orders' => 0,
                     'revenue' => 0,
+                    'gross_sales' => 0,
+                    'platform_fee' => 0,
+                    'net_payout' => 0,
                 ],
                 'totals' => [
                     'products' => 0,
                     'customers' => 0,
                     'orders' => 0,
                     'revenue' => 0,
+                    'gross_sales' => 0,
+                    'platform_fee' => 0,
+                    'net_payout' => 0,
                 ],
                 'pending' => [
                     'orders' => 0,
@@ -373,6 +427,7 @@ class ReportController extends Controller
         $storeId = $store->id;
         $today = now()->startOfDay();
         $thisMonth = now()->startOfMonth();
+        $commissionRate = $this->marketplaceCommissionRate();
 
         $scopeSupplierOrders = function ($q) use ($storeId) {
             $q->whereHas('items.product', function ($p) use ($storeId) {
@@ -406,6 +461,14 @@ class ReportController extends Controller
                 $q->where('status', Order::STATUS_DELIVERED);
             })
             ->sum('total_price');
+
+        $todayFee = round(((float) $todayRevenue) * $commissionRate, 2);
+        $monthFee = round(((float) $monthRevenue) * $commissionRate, 2);
+        $totalFee = round(((float) $totalRevenue) * $commissionRate, 2);
+
+        $todayNetPayout = round(((float) $todayRevenue) - $todayFee, 2);
+        $monthNetPayout = round(((float) $monthRevenue) - $monthFee, 2);
+        $totalNetPayout = round(((float) $totalRevenue) - $totalFee, 2);
 
         $ordersToday = Order::query()
             ->whereDate('created_at', $today)
@@ -448,20 +511,30 @@ class ReportController extends Controller
             ->count();
 
         return $this->successResponse([
+            'commission_rate' => $commissionRate,
             'today' => [
                 'orders' => $ordersToday,
                 'revenue' => $todayRevenue,
+                'gross_sales' => $todayRevenue,
+                'platform_fee' => $todayFee,
+                'net_payout' => $todayNetPayout,
                 'pending_stock_requests' => $pendingStockRequests,
             ],
             'this_month' => [
                 'orders' => $ordersThisMonth,
                 'revenue' => $monthRevenue,
+                'gross_sales' => $monthRevenue,
+                'platform_fee' => $monthFee,
+                'net_payout' => $monthNetPayout,
             ],
             'totals' => [
                 'products' => $productCount,
                 'customers' => $customerCount,
                 'orders' => $ordersTotal,
                 'revenue' => $totalRevenue,
+                'gross_sales' => $totalRevenue,
+                'platform_fee' => $totalFee,
+                'net_payout' => $totalNetPayout,
             ],
             'pending' => [
                 'orders' => Order::where('status', Order::STATUS_PENDING)

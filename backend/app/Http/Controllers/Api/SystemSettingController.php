@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class SystemSettingController extends Controller
 {
@@ -167,6 +169,112 @@ class SystemSettingController extends Controller
         Artisan::call('config:clear');
 
         return $this->successResponse(null, 'Cache cleared');
+    }
+
+    /**
+     * Clear all transactional platform data for a fresh start (Admin only).
+     * Keeps migrations and the current admin account to prevent lockout.
+     */
+    public function clearAllData(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'confirmation' => ['required', 'string', Rule::in(['RESET ALL DATA'])],
+        ], [
+            'confirmation.in' => 'Confirmation text must be exactly: RESET ALL DATA',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', 422, $validator->errors());
+        }
+
+        $currentAdmin = auth()->user();
+        $excludeTables = [
+            'migrations',
+            'password_reset_tokens',
+        ];
+
+        try {
+            $driver = DB::getDriverName();
+            $tableNames = $this->getTableNames($driver);
+
+            if (empty($tableNames)) {
+                return $this->errorResponse('No database tables found to reset', 400);
+            }
+
+            $this->disableForeignKeyChecks($driver);
+
+            foreach ($tableNames as $table) {
+                if (in_array($table, $excludeTables, true)) {
+                    continue;
+                }
+
+                if ($table === 'users' && $currentAdmin) {
+                    DB::table('users')->where('id', '!=', $currentAdmin->id)->delete();
+                    continue;
+                }
+
+                try {
+                    DB::table($table)->truncate();
+                } catch (\Throwable $e) {
+                    // Fallback when truncate is restricted in the current DB setup.
+                    DB::table($table)->delete();
+                }
+            }
+
+            $this->enableForeignKeyChecks($driver);
+
+            // Refresh runtime cache to avoid stale settings/config references.
+            Artisan::call('cache:clear');
+            Artisan::call('config:clear');
+
+            return $this->successResponse(null, 'All platform data has been reset. Current admin account was kept for access.');
+        } catch (\Throwable $e) {
+            $this->enableForeignKeyChecks(DB::getDriverName());
+            return $this->errorResponse('Failed to clear all data: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function disableForeignKeyChecks(string $driver): void
+    {
+        if ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF');
+        } elseif ($driver === 'pgsql') {
+            DB::statement("SET session_replication_role = 'replica'");
+        }
+    }
+
+    private function enableForeignKeyChecks(string $driver): void
+    {
+        if ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        } elseif ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON');
+        } elseif ($driver === 'pgsql') {
+            DB::statement("SET session_replication_role = 'origin'");
+        }
+    }
+
+    private function getTableNames(string $driver): array
+    {
+        if ($driver === 'mysql') {
+            $database = DB::getDatabaseName();
+            $rows = DB::select('SELECT table_name FROM information_schema.tables WHERE table_schema = ?', [$database]);
+            return array_map(fn ($r) => $r->table_name, $rows);
+        }
+
+        if ($driver === 'pgsql') {
+            $rows = DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public'");
+            return array_map(fn ($r) => $r->tablename, $rows);
+        }
+
+        if ($driver === 'sqlite') {
+            $rows = DB::select("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
+            return array_map(fn ($r) => $r->name, $rows);
+        }
+
+        return [];
     }
 
     /**

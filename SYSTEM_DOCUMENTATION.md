@@ -98,6 +98,18 @@ Backend uses JWT auth (`middleware('jwt.auth')`) and role guards (`middleware('r
   - Payments: `GET /api/v1/admin/payments`
 - Admin can list/filter; admin transaction updates are disabled in workflow controllers.
 
+### Admin report module behavior
+- Generate endpoint:
+  - `POST /api/v1/admin/reports`
+- Each generate request creates **one** report record for the chosen type (`sales`, `inventory`, `revenue`, etc.).
+- The admin "Generated Reports" table is a **history log**:
+  - it shows all previous runs across report types until a record is deleted.
+- Frontend reports page supports:
+  - in-app report detail viewing (modal)
+  - filtering by type/status/search
+  - delete action per report row
+- File export buttons (JSON/CSV) are intentionally removed from the admin reports UI flow.
+
 ---
 
 ## Status Lifecycle (Order / Payment / Delivery)

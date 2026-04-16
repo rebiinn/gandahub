@@ -1,0 +1,41 @@
+# Dependencies (install with npm / Composer; never commit)
+frontend/node_modules/
+backend/vendor/
+
+# Environment and secrets — copy from .env.example
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+
+# Build output
+frontend/dist/
+backend/public/hot
+backend/public/storage
+
+# Laravel
+backend/storage/*.key
+backend/bootstrap/cache/*.php
+!backend/bootstrap/cache/.gitignore
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+!backend/storage/framework/cache/data/.gitignore
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitignore
+backend/.phpunit.result.cache
+
+# Vite
+frontend/node_modules/.vite/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and debug
+npm-debug.log*
+yarn-error.log*

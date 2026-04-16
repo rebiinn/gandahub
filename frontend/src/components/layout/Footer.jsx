@@ -150,6 +150,16 @@ const Footer = () => {
                   Terms of Service
                 </Link>
               </li>
+              <li>
+                <Link to="/driver-apply" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Apply as Driver
+                </Link>
+              </li>
+              <li>
+                <Link to="/seller-apply" className="text-gray-400 hover:text-primary-400 transition-colors">
+                  Apply as Seller
+                </Link>
+              </li>
             </ul>
           </div>
 

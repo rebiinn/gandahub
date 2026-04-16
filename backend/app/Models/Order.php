@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\OrderCustomerNotifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -44,6 +45,12 @@ class Order extends Model
         'billing_zip_code',
         'billing_country',
         'notes',
+        'cancellation_reason',
+        'cancellation_previous_status',
+        'cancellation_requested_at',
+        'cancellation_reviewed_at',
+        'cancellation_review_note',
+        'cancellation_reviewed_by',
         'shipped_at',
         'delivered_at',
     ];
@@ -57,6 +64,8 @@ class Order extends Model
         'shipping_fee' => 'decimal:2',
         'discount' => 'decimal:2',
         'total' => 'decimal:2',
+        'cancellation_requested_at' => 'datetime',
+        'cancellation_reviewed_at' => 'datetime',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];
@@ -67,6 +76,7 @@ class Order extends Model
     const STATUS_PENDING = 'pending';
     const STATUS_CONFIRMED = 'confirmed';
     const STATUS_PROCESSING = 'processing';
+    const STATUS_CANCEL_REQUESTED = 'cancel_requested';
     const STATUS_SHIPPED = 'shipped';
     const STATUS_OUT_FOR_DELIVERY = 'out_for_delivery';
     const STATUS_DELIVERED = 'delivered';
@@ -159,10 +169,11 @@ class Order extends Model
 
     /**
      * Check if order can be cancelled.
+     * Only before the seller confirms (status must still be pending).
      */
     public function canBeCancelled(): bool
     {
-        return in_array($this->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED]);
+        return $this->status === self::STATUS_PENDING;
     }
 
     /**
@@ -170,6 +181,12 @@ class Order extends Model
      */
     public function updateStatus(string $status): void
     {
+        if ($this->status === $status) {
+            return;
+        }
+
+        $previousStatus = $this->status;
+
         $this->update(['status' => $status]);
 
         if ($status === self::STATUS_SHIPPED) {
@@ -180,6 +197,9 @@ class Order extends Model
             $this->update(['delivered_at' => now()]);
             $this->completeCodPaymentIfApplicable();
         }
+
+        $this->refresh();
+        OrderCustomerNotifier::notifyStatusChange($this, $previousStatus, $status);
     }
 
     /**

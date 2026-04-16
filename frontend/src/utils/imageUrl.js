@@ -16,6 +16,10 @@ function upgradeHttpForApiHost(absUrl) {
   if (!absUrl || typeof absUrl !== 'string' || !/^http:\/\//i.test(absUrl)) {
     return absUrl;
   }
+  // Only upgrade on HTTPS pages to avoid breaking local HTTP dev URLs.
+  if (typeof window !== 'undefined' && window.location?.protocol !== 'https:') {
+    return absUrl;
+  }
   let apiHost = '';
   try {
     apiHost = new URL(getApiOrigin()).hostname;

@@ -21,6 +21,36 @@ To understand how the frontend, backend, and the order pipeline fit together, se
 2. **Frontend:** From `frontend/`, set `VITE_API_URL` in `.env` to your API base with version, e.g. `http://127.0.0.1:8000/api/v1`. Run `npm install` then `npm run dev`. Production builds run `write-config.js` so `public/config.json` gets `apiUrl` from `VITE_API_URL`; in dev, Vite reads the env variable directly.
 3. **Optional:** Configure `MAIL_*` in the backend `.env` if you use forgot-password / email flows. For **Continue with Google**, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and ensure the redirect URI matches `GOOGLE_REDIRECT_URI` in `.env`.
 
+## GCash Auto-Confirm Setup (PayMongo)
+
+Use this if you want fully automatic confirmation after GCash payment (no manual confirm button).
+
+1. In `backend/.env`, set:
+   - `PAYMONGO_SECRET_KEY=...` (your PayMongo secret key)
+   - `PAYMONGO_VERIFY_SSL=true` (set `false` only for local SSL troubleshooting)
+   - `FRONTEND_URL=http://localhost:5173` (or your real frontend URL)
+2. Expose your local backend with a tunnel (for webhook callbacks), for example:
+   - `ngrok http http://127.0.0.1:8000`
+3. In PayMongo Dashboard, create a webhook pointing to:
+   - `https://<your-ngrok-domain>/api/v1/payments/paymongo/webhook`
+4. Subscribe to payment result events:
+   - success/paid events (e.g. checkout/session paid)
+   - failed/expired events
+5. Copy the webhook signing secret from PayMongo and set:
+   - `PAYMONGO_WEBHOOK_SECRET=...` in `backend/.env`
+6. Restart backend after env changes:
+   - `php artisan config:clear`
+   - `php artisan serve`
+7. Test a GCash checkout:
+   - Checkout redirects to PayMongo.
+   - After payment, you return to `/orders/:id?payment=success`.
+   - Order payment status updates automatically once webhook arrives.
+
+Troubleshooting:
+- If payment stays `processing`, verify webhook delivery logs in PayMongo Dashboard (expect HTTP 200 from your API).
+- Confirm tunnel URL still active (ngrok URLs change on restart unless reserved).
+- Check backend logs for webhook mapping/signature warnings.
+
 ## Features
 
 ### Customer Features
@@ -48,6 +78,9 @@ To understand how the frontend, backend, and the order pipeline fit together, se
 - **Reviews** moderation (approve / reject)
 - **Newsletter subscribers** list
 - Reports (sales, inventory, revenue, etc.)
+  - Generate exactly one report type per run (based on selected report card)
+  - Generated list is historical (older report runs are kept until deleted)
+  - View report details in-app (download/export actions removed from the admin page)
 - System settings and database backup support
 
 ### Supplier Features (`/supplier` portal)
@@ -93,7 +126,16 @@ Without `VITE_API_URL` pointing to your Railway backend (e.g. `https://websystem
    - Alternatively, reference or copy **DB_HOST**, **DB_PORT**, **DB_DATABASE**, **DB_USERNAME**, **DB_PASSWORD** from the MySQL service (DB_HOST must be the MySQL hostname Railway shows, not `127.0.0.1`).
 4. Set **APP_KEY** and **JWT_SECRET** as needed.
 5. **Email (password reset):** For forgot-password links to work in production, configure real **MAIL_*** variables (or a transactional email provider). Local dev can use Mailpit or similar if `MAIL_HOST` points to a test inbox.
-6. **New deploys / schema changes:** After pulling code with new migrations, ensure the release runs `php artisan migrate --force`. The repo may include migration helpers under `backend/` (e.g. one-off scripts) for specific tables; prefer `php artisan migrate` when possible.
+6. **New deploys / schema changes:** After pulling code with new migrations, ensure the release runs `php artisan migrate --force`. Use Laravel migrations as the single source of truth for schema updates.
+
+---
+
+## Quality and maintenance notes
+
+- Frontend lint currently passes with **0 errors** (warnings remain for hook dependency recommendations).
+- Frontend production build is verified (`npm run build`).
+- Backend route boot is verified (`php artisan route:list --path=reports`).
+- Backend automated tests may fail to run locally if required PHP extensions are missing (for this environment, `mbstring` is missing).
 
 ---
 

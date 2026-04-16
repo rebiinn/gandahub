@@ -12,6 +12,7 @@ import Layout from './components/layout/Layout';
 import AdminLayout from './components/layout/AdminLayout';
 import RiderLayout from './components/layout/RiderLayout';
 import SupplierLayout from './components/layout/SupplierLayout';
+import LogisticsLayout from './components/layout/LogisticsLayout';
 
 // Public Pages
 import Home from './pages/Home';
@@ -32,6 +33,8 @@ import ReturnsExchanges from './pages/ReturnsExchanges';
 import ShippingInfo from './pages/ShippingInfo';
 import Wishlist from './pages/Wishlist';
 import StoreFront from './pages/StoreFront';
+import DriverApply from './pages/DriverApply';
+import SellerApply from './pages/SellerApply';
 
 // Customer Pages
 import Profile from './pages/Profile';
@@ -44,7 +47,6 @@ import AdminProducts from './pages/admin/Products';
 import AdminCategories from './pages/admin/Categories';
 import AdminOrders from './pages/admin/Orders';
 import AdminUsers from './pages/admin/Users';
-import AdminDeliveries from './pages/admin/Deliveries';
 import AdminLogistics from './pages/admin/Logistics';
 import AdminPayments from './pages/admin/Payments';
 import AdminReports from './pages/admin/Reports';
@@ -52,7 +54,6 @@ import AdminNewsletter from './pages/admin/Newsletter';
 import AdminSettings from './pages/admin/Settings';
 import AdminInventory from './pages/admin/Inventory';
 import AdminStores from './pages/admin/Stores';
-import AdminReviews from './pages/admin/Reviews';
 
 // Rider Pages
 import RiderDashboard from './pages/rider/Dashboard';
@@ -64,15 +65,18 @@ import SupplierProducts from './pages/supplier/Products';
 import SupplierInventory from './pages/supplier/Inventory';
 import SupplierOrders from './pages/supplier/Orders';
 import SupplierMessages from './pages/supplier/Messages';
-import SupplierStockRequests from './pages/supplier/StockRequests';
 import SupplierReviews from './pages/supplier/Reviews';
 import SupplierLogistics from './pages/supplier/Logistics';
+import LogisticsDashboard from './pages/logistics/Dashboard';
+import LogisticsDeliveries from './pages/logistics/Deliveries';
+import LogisticsDriverApplications from './pages/logistics/DriverApplications';
 
 // Route Guards
 import PrivateRoute from './components/auth/PrivateRoute';
 import AdminRoute from './components/auth/AdminRoute';
 import RiderRoute from './components/auth/RiderRoute';
 import SupplierRoute from './components/auth/SupplierRoute';
+import LogisticsRoute from './components/auth/LogisticsRoute';
 
 function App() {
   return (
@@ -116,6 +120,8 @@ function App() {
               <Route path="faqs" element={<FAQs />} />
               <Route path="returns-exchanges" element={<ReturnsExchanges />} />
               <Route path="shipping-info" element={<ShippingInfo />} />
+              <Route path="driver-apply" element={<DriverApply />} />
+              <Route path="seller-apply" element={<SellerApply />} />
               
               {/* Protected Customer Routes */}
               <Route path="checkout" element={
@@ -156,14 +162,12 @@ function App() {
               <Route path="categories" element={<AdminCategories />} />
               <Route path="orders" element={<AdminOrders />} />
               <Route path="users" element={<AdminUsers />} />
-              <Route path="deliveries" element={<AdminDeliveries />} />
               <Route path="logistics" element={<AdminLogistics />} />
               <Route path="payments" element={<AdminPayments />} />
               <Route path="inventory" element={<AdminInventory />} />
               <Route path="stores" element={<AdminStores />} />
               <Route path="reports" element={<AdminReports />} />
               <Route path="newsletter" element={<AdminNewsletter />} />
-              <Route path="reviews" element={<AdminReviews />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
             
@@ -186,11 +190,21 @@ function App() {
               <Route index element={<SupplierDashboard />} />
               <Route path="products" element={<SupplierProducts />} />
               <Route path="inventory" element={<SupplierInventory />} />
-              <Route path="stock-requests" element={<SupplierStockRequests />} />
               <Route path="reviews" element={<SupplierReviews />} />
               <Route path="orders" element={<SupplierOrders />} />
               <Route path="logistics" element={<SupplierLogistics />} />
               <Route path="messages" element={<SupplierMessages />} />
+            </Route>
+
+            {/* Logistics Partner Routes */}
+            <Route path="/logistics" element={
+              <LogisticsRoute>
+                <LogisticsLayout />
+              </LogisticsRoute>
+            }>
+              <Route index element={<LogisticsDashboard />} />
+              <Route path="deliveries" element={<LogisticsDeliveries />} />
+              <Route path="applications" element={<LogisticsDriverApplications />} />
             </Route>
           </Routes>
         </CartProvider>

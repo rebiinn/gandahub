@@ -103,15 +103,7 @@ const RiderLayout = () => {
           >
             <FaBars className="w-6 h-6" />
           </button>
-
-          <div className="flex items-center gap-4">
-            <Link
-              to="/"
-              className="text-sm text-gray-600 hover:text-blue-600"
-            >
-              View Store
-            </Link>
-          </div>
+          <div />
         </header>
 
         {/* Page Content */}

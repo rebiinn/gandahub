@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { FaEye, FaMoneyBillWave } from 'react-icons/fa';
 import { deliveriesAPI, logisticsAPI } from '../../services/api';
@@ -19,10 +19,6 @@ const Deliveries = () => {
   const [logisticsCatalog, setLogisticsCatalog] = useState(null);
 
   useEffect(() => {
-    fetchDeliveries();
-  }, []);
-
-  useEffect(() => {
     if (!showModal) return;
     let cancelled = false;
     (async () => {
@@ -41,7 +37,7 @@ const Deliveries = () => {
     };
   }, [showModal]);
 
-  const fetchDeliveries = async (page = 1, statusOverride) => {
+  const fetchDeliveries = useCallback(async (page = 1, statusOverride) => {
     try {
       setLoading(true);
       const params = { page };
@@ -55,7 +51,11 @@ const Deliveries = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
+
+  useEffect(() => {
+    fetchDeliveries();
+  }, [fetchDeliveries]);
 
   const viewDelivery = async (id) => {
     try {
