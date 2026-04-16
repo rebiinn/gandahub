@@ -9,8 +9,13 @@ function getBaseURL() {
   let raw =
     (typeof window !== 'undefined' && (window.__API_BASE_URL__ || window.__VITE_API_URL__)) ||
     import.meta.env.VITE_API_URL ||
-    'http://localhost:8000/api/v1';
-  raw = String(raw).replace(/\/$/, '');
+    '';
+  raw = String(raw).trim().replace(/\/$/, '');
+  if (!raw) {
+    // Never fallback to localhost in deployed builds.
+    // Use same-origin API as a safe fallback when VITE_API_URL is missing.
+    return '/api/v1';
+  }
   // Common Railway misconfig: …/api/auth — API lives under …/api/v1
   if (/\/api\/auth$/i.test(raw)) {
     raw = raw.replace(/\/api\/auth$/i, '/api/v1');

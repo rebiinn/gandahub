@@ -5,8 +5,13 @@ const getApiBaseURL = () => {
   const raw =
     (typeof window !== 'undefined' && (window.__API_BASE_URL__ || window.__VITE_API_URL__)) ||
     import.meta.env.VITE_API_URL ||
-    'http://localhost:8000/api/v1';
-  return String(raw).replace(/\/$/, '');
+    '';
+  const normalized = String(raw).trim().replace(/\/$/, '');
+  if (normalized) return normalized;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/api/v1`;
+  }
+  return '/api/v1';
 };
 
 /**
