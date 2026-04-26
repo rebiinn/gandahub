@@ -261,17 +261,17 @@ class SystemSettingController extends Controller
         if ($driver === 'mysql') {
             $database = DB::getDatabaseName();
             $rows = DB::select('SELECT table_name FROM information_schema.tables WHERE table_schema = ?', [$database]);
-            return array_map(fn ($r) => $r->table_name, $rows);
+            return array_map(fn ($r) => array_values((array) $r)[0], $rows);
         }
 
         if ($driver === 'pgsql') {
             $rows = DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public'");
-            return array_map(fn ($r) => $r->tablename, $rows);
+            return array_map(fn ($r) => array_values((array) $r)[0], $rows);
         }
 
         if ($driver === 'sqlite') {
             $rows = DB::select("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
-            return array_map(fn ($r) => $r->name, $rows);
+            return array_map(fn ($r) => array_values((array) $r)[0], $rows);
         }
 
         return [];
