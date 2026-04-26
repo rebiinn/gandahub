@@ -199,12 +199,11 @@ class PaymentController extends Controller
             }
         }
 
-        $eventType  = (string) data_get($payload, 'event', '');
-        $data       = data_get($payload, 'data', []);
-        $invoiceId  = (string) data_get($data, 'id', '');
-        $externalId = (string) data_get($data, 'external_id', '');
-        $status     = strtoupper((string) data_get($data, 'status', ''));
-        $metadata   = (array)  data_get($data, 'metadata', []);
+        $invoiceId  = (string) data_get($payload, 'id', '');
+        $externalId = (string) data_get($payload, 'external_id', '');
+        $status     = strtoupper((string) data_get($payload, 'status', ''));
+        $metadata   = (array)  data_get($payload, 'metadata', []);
+        $paymentMethod = (string) data_get($payload, 'payment_method', '');
 
         // Resolve local payment record — try multiple lookup strategies.
         $payment = null;
@@ -233,7 +232,7 @@ class PaymentController extends Controller
             Log::warning('Xendit webhook received but could not map to a local payment', [
                 'invoice_id'  => $invoiceId,
                 'external_id' => $externalId,
-                'event'       => $eventType,
+                'status'      => $status,
             ]);
             return $this->successResponse(['received' => true], 'Ignored');
         }
@@ -243,8 +242,8 @@ class PaymentController extends Controller
             return $this->successResponse(['received' => true], 'Ignored');
         }
 
-        $isPaidEvent    = ($status === 'PAID'    || str_contains(strtolower($eventType), 'paid'));
-        $isExpiredEvent = ($status === 'EXPIRED' || str_contains(strtolower($eventType), 'expired'));
+        $isPaidEvent    = ($status === 'PAID'    || $status === 'SETTLED');
+        $isExpiredEvent = ($status === 'EXPIRED' || $status === 'FAILED');
 
         if ($isPaidEvent) {
             $orderCancelled = in_array((string) $order->status, [Order::STATUS_CANCELLED], true);
@@ -268,7 +267,7 @@ class PaymentController extends Controller
                             'refund_reason'     => 'payment_paid_after_order_cancelled',
                             'refund_amount'     => (float) $payment->amount,
                             'refund_at'         => now()->toDateTimeString(),
-                            'last_webhook_event' => $eventType,
+                            'last_webhook_event' => $status,
                         ]),
                     ]);
                 }
@@ -281,8 +280,8 @@ class PaymentController extends Controller
                     'payment_details' => array_merge($payment->payment_details ?? [], [
                         'provider'          => 'xendit',
                         'xendit_invoice_id' => $invoiceId,
-                        'payment_method'    => data_get($data, 'payment_method'),
-                        'last_webhook_event' => $eventType,
+                        'payment_method'    => $paymentMethod,
+                        'last_webhook_event' => $status,
                     ]),
                 ]);
             }
@@ -296,11 +295,11 @@ class PaymentController extends Controller
             }
         } elseif ($isExpiredEvent) {
             if ($payment->status !== Payment::STATUS_FAILED) {
-                $payment->markAsFailed('Xendit reported ' . $eventType);
+                $payment->markAsFailed('Xendit reported ' . $status);
                 $payment->update([
                     'payment_details' => array_merge($payment->payment_details ?? [], [
                         'provider'          => 'xendit',
-                        'last_webhook_event' => $eventType,
+                        'last_webhook_event' => $status,
                     ]),
                 ]);
             }
