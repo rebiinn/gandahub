@@ -27,9 +27,8 @@ const Checkout = () => {
   const [checkoutData, setCheckoutData] = useState(null);
   const [gcashOrderId, setGcashOrderId] = useState(null);
   const [gcashCheckoutUrl, setGcashCheckoutUrl] = useState('');
-  const [gcashQrImageUrl, setGcashQrImageUrl] = useState('');
-  const [showFullQr, setShowFullQr] = useState(false);
   const [waitingForPayment, setWaitingForPayment] = useState(false);
+  const [redirectCopied, setRedirectCopied] = useState(false);
 
   const {
     register,
@@ -204,26 +203,29 @@ const Checkout = () => {
           }
         }
 
-        // Automatic GCash flow via PayMongo checkout + webhook confirmation.
+        // Call Xendit invoice flow via placeWithPayment endpoint.
         const response = await ordersAPI.placeWithPayment({
           ...orderData,
           payment_method: 'gcash',
         });
-        const qrImageUrl = String(response?.data?.data?.qr_image_url || '').trim();
+
+        const checkoutUrl = String(response?.data?.data?.checkout_url || '').trim();
         const orderId = response?.data?.data?.order_id;
-        if (!qrImageUrl) {
-          throw new Error('Payment gateway did not return a QR code.');
+        if (!checkoutUrl) {
+          throw new Error('Payment gateway did not return a checkout URL.');
         }
         if (!orderId) {
           throw new Error('Order was created but payment tracking ID is missing.');
         }
         setCheckoutData(orderData);
-        setGcashCheckoutUrl(String(response?.data?.data?.checkout_url || '').trim());
-        setGcashQrImageUrl(qrImageUrl);
+        setGcashCheckoutUrl(checkoutUrl);
         setGcashOrderId(orderId);
         setStep(PAYMENT_FORM_STEP);
-        toast.info('Scan the QRPh code in your GCash app to pay.');
+        // Auto-open Xendit checkout in a new tab immediately.
+        window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+        toast.info('Opening Xendit payment page in a new tab...');
         return;
+
       } else {
         const response = await ordersAPI.create(orderData);
         const order = response.data.data;
@@ -267,14 +269,13 @@ const Checkout = () => {
         const res = await ordersAPI.getOne(gcashOrderId);
         const order = res?.data?.data;
         const paymentStatus = String(order?.payment?.status || '').toLowerCase();
-        if (!cancelled && paymentStatus === 'completed') {
-          toast.success('Payment confirmed. Redirecting back to shop...');
+            if (!cancelled && paymentStatus === 'completed') {
+          toast.success('Payment confirmed! Redirecting to your orders...');
           clearCart();
           setCheckoutData(null);
           setGcashOrderId(null);
           setGcashCheckoutUrl('');
-          setGcashQrImageUrl('');
-          navigate('/shop');
+          navigate('/orders');
         }
       } catch (_) {
         // Keep polling while payment gateway/webhook settles.
@@ -302,12 +303,11 @@ const Checkout = () => {
 
   if (step === PAYMENT_FORM_STEP && checkoutData) {
     return (
-      <>
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             type="button"
-            onClick={() => { setStep(PAYMENT_STEP); setCheckoutData(null); setGcashOrderId(null); setGcashCheckoutUrl(''); setGcashQrImageUrl(''); }}
+            onClick={() => { setStep(PAYMENT_STEP); setCheckoutData(null); setGcashOrderId(null); setGcashCheckoutUrl(''); }}
             className="text-primary-600 hover:text-primary-700 text-sm mb-4"
           >
             ← Back to checkout
@@ -317,65 +317,44 @@ const Checkout = () => {
             <h1 className="text-2xl font-display font-bold">Complete Your Payment</h1>
           </div>
           <p className="text-gray-600 mb-8">
-            Scan this QR with your GCash app and pay the exact amount. We will automatically redirect after confirmation.
+            Your order has been created. Complete your payment on the Xendit page to confirm it.
           </p>
 
           <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
-            <h2 className="text-lg font-semibold text-gray-800">GCash QR Payment</h2>
+            <h2 className="text-lg font-semibold text-gray-800">GCash / Online Payment via Xendit</h2>
 
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <p className="text-sm text-gray-700 mb-3">
+            <div className="border rounded-lg p-4 bg-gray-50 text-center space-y-4">
+              <p className="text-sm text-gray-700">
                 Amount to pay: <span className="font-semibold">{formatPrice(cart?.total || checkoutData?.total || 0)}</span>
               </p>
-              {gcashQrImageUrl ? (
-                <div className="flex justify-center my-3">
-                  <img
-                    src={gcashQrImageUrl}
-                    alt="Scan QRPh to pay"
-                    className="w-[420px] max-w-full rounded-lg border border-gray-200 bg-white p-3"
-                    style={{ imageRendering: 'pixelated' }}
-                  />
-                </div>
-              ) : (
-                <p className="text-sm text-red-600">Could not generate QR. Please go back and try again.</p>
-              )}
-              <p className="text-sm text-gray-600 text-center">
-                After scanning, complete the payment in your GCash app.
+              <p className="text-sm text-gray-600">
+                A Xendit-hosted payment page has been opened in a new tab. If it did not open, click the button below.
               </p>
-            </div>
-
-            <div className="flex items-center justify-center">
-              <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => window.open(gcashCheckoutUrl, '_blank', 'noopener,noreferrer')}
+                disabled={!gcashCheckoutUrl}
+              >
+                Open Payment Page
+              </Button>
+              <div className="flex justify-center">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => window.open(gcashCheckoutUrl, '_blank', 'noopener,noreferrer')}
-                  disabled={!gcashCheckoutUrl}
-                >
-                  Open payment page
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowFullQr(true)}
-                  disabled={!gcashQrImageUrl}
-                >
-                  Open full QR
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
+                  size="sm"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(gcashCheckoutUrl);
-                      toast.success('Payment link copied.');
+                      setRedirectCopied(true);
+                      setTimeout(() => setRedirectCopied(false), 2000);
                     } catch (_) {
                       toast.error('Could not copy payment link.');
                     }
                   }}
                   disabled={!gcashCheckoutUrl}
                 >
-                  Copy payment link
+                  {redirectCopied ? '✓ Copied!' : 'Copy payment link'}
                 </Button>
               </div>
             </div>
@@ -384,38 +363,14 @@ const Checkout = () => {
               {waitingForPayment ? 'Checking payment confirmation...' : 'Waiting for payment confirmation...'}
             </p>
             <p className="text-xs text-center text-gray-500">
-              This is a true QRPh payment code. Scan it in GCash &quot;Pay QR&quot; to complete payment.
+              Pay via GCash, credit/debit card, or other methods on the Xendit page.
             </p>
             <p className="text-xs text-center text-gray-500">
-              You will be redirected automatically once payment is confirmed by webhook.
+              This page will redirect automatically once your payment is confirmed.
             </p>
-            </div>
-          </div>
-      </div>
-
-      {showFullQr && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowFullQr(false)}>
-          <div className="bg-white rounded-xl shadow-xl p-4 max-w-[95vw] max-h-[95vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold text-gray-800">Scan this QRPh code</h3>
-              <button
-                type="button"
-                onClick={() => setShowFullQr(false)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Close
-              </button>
-            </div>
-            <img
-              src={gcashQrImageUrl}
-              alt="Full QRPh code"
-              className="w-[720px] max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4"
-              style={{ imageRendering: 'pixelated' }}
-            />
           </div>
         </div>
-      )}
-      </>
+      </div>
     );
   }
 

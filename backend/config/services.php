@@ -25,11 +25,11 @@ return [
             ?: (rtrim((string) (env('APP_URL') ?: 'http://localhost'), '/') . '/api/v1/auth/google/callback'),
     ],
 
-    'paymongo' => [
-        'base_url' => env('PAYMONGO_BASE_URL', 'https://api.paymongo.com/v1'),
-        'secret_key' => env('PAYMONGO_SECRET_KEY'),
-        'verify_ssl' => env('PAYMONGO_VERIFY_SSL', true),
-        'webhook_secret' => env('PAYMONGO_WEBHOOK_SECRET'),
+    'xendit' => [
+        'secret_key'           => env('XENDIT_SECRET_KEY'),
+        'webhook_token'        => env('XENDIT_WEBHOOK_TOKEN'),
+        'success_redirect_url' => env('XENDIT_SUCCESS_REDIRECT_URL', env('FRONTEND_URL', 'http://localhost:5173') . '/orders'),
+        'failure_redirect_url' => env('XENDIT_FAILURE_REDIRECT_URL', env('FRONTEND_URL', 'http://localhost:5173') . '/checkout'),
     ],
 
 ];

@@ -124,7 +124,7 @@ Route::prefix('v1')->group(function () {
 
     // Payment methods
     Route::get('/payments/methods', [PaymentController::class, 'methods']);
-    Route::post('/payments/paymongo/webhook', [PaymentController::class, 'paymongoWebhook']);
+    Route::post('/payments/xendit/webhook', [PaymentController::class, 'xenditWebhook']);
 
     // Protected routes
     Route::middleware('jwt.auth')->group(function () {

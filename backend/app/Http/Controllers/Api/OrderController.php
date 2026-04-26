@@ -12,7 +12,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\User;
-use App\Services\PayMongoService;
+use App\Services\XenditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -315,10 +315,10 @@ class OrderController extends Controller
         DB::beginTransaction();
 
         try {
-            $payMongo = app(PayMongoService::class);
-            if (!$payMongo->isConfigured()) {
+            $xendit = app(XenditService::class);
+            if (!$xendit->isConfigured()) {
                 DB::rollBack();
-                return $this->errorResponse('PayMongo is not configured yet. Please contact admin.', 422);
+                return $this->errorResponse('Xendit is not configured yet. Please contact admin.', 422);
             }
 
             $order = Order::create([
@@ -377,62 +377,55 @@ class OrderController extends Controller
                 'status' => Delivery::STATUS_PENDING,
             ]);
 
-            $qrPhPayment = $payMongo->createQrPhPayment([
-                'amount' => (int) round(((float) $cart->total) * 100),
-                'currency' => 'PHP',
-                'description' => 'Payment for order ' . $order->order_number,
-                'billing' => [
-                    'name' => trim($request->shipping_first_name . ' ' . $request->shipping_last_name),
-                    'email' => (string) $request->shipping_email,
-                    'phone' => (string) ($request->shipping_phone ?? ''),
-                    'address' => [
-                        'line1' => (string) $request->shipping_address,
-                        'city' => (string) $request->shipping_city,
-                        'state' => (string) ($request->shipping_state ?? ''),
-                        'postal_code' => (string) $request->shipping_zip_code,
-                        'country' => (string) ($request->shipping_country ?? 'PH'),
-                    ],
+            $xenditInvoice = $xendit->createInvoice([
+                'external_id'  => 'order-' . $order->order_number,
+                'amount'       => (float) $cart->total,
+                'description'  => 'Payment for order ' . $order->order_number,
+                'customer'     => [
+                    'given_names'   => trim($request->shipping_first_name . ' ' . $request->shipping_last_name),
+                    'email'         => (string) $request->shipping_email,
+                    'mobile_number' => (string) ($request->shipping_phone ?? ''),
                 ],
+                'success_redirect_url' => (string) config('services.xendit.success_redirect_url'),
+                'failure_redirect_url' => (string) config('services.xendit.failure_redirect_url'),
                 'metadata' => [
-                    'order_id' => (string) $order->id,
-                    'payment_id' => (string) $payment->id,
-                    'user_id' => (string) $user->id,
+                    'order_id'     => (string) $order->id,
+                    'payment_id'   => (string) $payment->id,
+                    'user_id'      => (string) $user->id,
                     'order_number' => (string) $order->order_number,
                 ],
             ]);
 
-            $paymentIntentId = (string) data_get($qrPhPayment, 'payment_intent_id', '');
-            $paymentMethodId = (string) data_get($qrPhPayment, 'payment_method_id', '');
-            $qrImageUrl = (string) data_get($qrPhPayment, 'qr_image_url', '');
-            $qrCodeId = (string) data_get($qrPhPayment, 'qr_code_id', '');
-            if ($paymentIntentId === '' || $qrImageUrl === '') {
-                throw new \RuntimeException('PayMongo did not return QR payment details.');
+            $xenditInvoiceId = (string) data_get($xenditInvoice, 'id', '');
+            $checkoutUrl     = (string) data_get($xenditInvoice, 'invoice_url', '');
+            $externalId      = (string) data_get($xenditInvoice, 'external_id', '');
+            $expiresAt       = data_get($xenditInvoice, 'expiry_date');
+
+            if ($xenditInvoiceId === '' || $checkoutUrl === '') {
+                throw new \RuntimeException('Xendit did not return a valid invoice URL.');
             }
 
             $payment->update([
                 'payment_details' => [
-                    'provider' => 'paymongo',
-                    'flow' => 'qrph',
-                    'payment_intent_id' => $paymentIntentId,
-                    'payment_method_id' => $paymentMethodId,
-                    'qr_image_url' => $qrImageUrl,
-                    'qr_code_id' => $qrCodeId,
-                    'next_action_type' => data_get($qrPhPayment, 'next_action_type'),
-                    'expires_at' => data_get($qrPhPayment, 'expires_at'),
+                    'provider'          => 'xendit',
+                    'flow'              => 'invoice',
+                    'xendit_invoice_id' => $xenditInvoiceId,
+                    'external_id'       => $externalId,
+                    'checkout_url'      => $checkoutUrl,
+                    'expires_at'        => $expiresAt,
                 ],
-                'transaction_id' => $paymentIntentId,
+                'transaction_id' => $xenditInvoiceId,
             ]);
 
             DB::commit();
 
             return $this->successResponse([
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'payment_intent_id' => $paymentIntentId,
-                'qr_image_url' => $qrImageUrl,
-                'qr_code_id' => $qrCodeId,
-                'expires_at' => data_get($qrPhPayment, 'expires_at'),
-            ], 'QR payment created. Awaiting confirmation.', 201);
+                'order_id'          => $order->id,
+                'order_number'      => $order->order_number,
+                'xendit_invoice_id' => $xenditInvoiceId,
+                'checkout_url'      => $checkoutUrl,
+                'expires_at'        => $expiresAt,
+            ], 'Invoice created. Redirecting to payment page.', 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return $this->errorResponse('Failed to place order: ' . $e->getMessage(), 500);
