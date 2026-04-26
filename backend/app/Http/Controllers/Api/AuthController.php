@@ -274,6 +274,12 @@ class AuthController extends Controller
     private function getFrontendUrl(): string
     {
         $url = trim(env('FRONTEND_URL', 'http://localhost:5173'));
+
+        // Fallback for Railway deployment if FRONTEND_URL is forgotten
+        if (str_contains($url, 'localhost') && str_contains(request()->getHost(), 'railway.app')) {
+            $url = 'https://gandahub.up.railway.app';
+        }
+
         $url = rtrim($url, '/');
         $url = ltrim($url, '/');
         if ($url && !preg_match('#^https?://#i', $url)) {
