@@ -292,6 +292,7 @@ class PaymentController extends Controller
             $userCart = Cart::where('user_id', $order->user_id)->first();
             if ($userCart) {
                 $userCart->clear();
+                Log::info('Cart cleared via Xendit webhook for user: ' . $order->user_id);
             }
         } elseif ($isExpiredEvent) {
             if ($payment->status !== Payment::STATUS_FAILED) {

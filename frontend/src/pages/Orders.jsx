@@ -6,14 +6,19 @@ import { toAbsoluteImageUrl, PLACEHOLDER_PRODUCT } from '../utils/imageUrl';
 import Loading from '../components/common/Loading';
 import Badge from '../components/common/Badge';
 import Pagination from '../components/common/Pagination';
+import { useCart } from '../context/CartContext';
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
 
+  const { fetchCart } = useCart();
+
   useEffect(() => {
     fetchOrders();
+    // Refresh cart in case we just came back from a successful payment redirect
+    fetchCart();
   }, []);
 
   const fetchOrders = async (page = 1) => {
